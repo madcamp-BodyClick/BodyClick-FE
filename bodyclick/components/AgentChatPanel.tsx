@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import {
@@ -81,10 +81,22 @@ const AgentChatPanel = () => {
 
   const [input, setInput] = useState("");
   const pendingResponseRef = useRef<number | null>(null);
+  const threadRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setInput("");
   }, [selectedBodyPart]);
+
+  useLayoutEffect(() => {
+    if (!threadRef.current) {
+      return;
+    }
+    const target = threadRef.current;
+    const raf = window.requestAnimationFrame(() => {
+      target.scrollTop = target.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [messages.length]);
 
   useEffect(() => {
     return () => {
@@ -162,7 +174,10 @@ const AgentChatPanel = () => {
         </div>
       </div>
 
-      <div className="max-h-[280px] space-y-3 overflow-y-auto pr-1">
+      <div
+        ref={threadRef}
+        className="max-h-[280px] space-y-3 overflow-y-auto pr-1"
+      >
         {messages.length === 0 ? (
           <div className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4 text-sm text-bm-muted">
             첫 질문을 입력하면 상담이 시작됩니다.

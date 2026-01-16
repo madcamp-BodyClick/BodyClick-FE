@@ -58,6 +58,8 @@ const Stage3D = () => {
     ? BODY_PART_LOOKUP[selectedBodyPart]?.label
     : null;
   const systemLabel = selectedSystem ? SYSTEM_LABELS[selectedSystem] : "전신";
+  const barWidth =
+    parts.length <= 1 ? 180 : parts.length <= 3 ? 300 : 480;
 
   return (
     <section className="relative h-[68vh] min-h-[420px] w-full overflow-hidden rounded-[32px] border border-bm-border bg-bm-surface-soft animate-[rise-in_0.9s_ease-out]">
@@ -95,7 +97,7 @@ const Stage3D = () => {
         <button
           type="button"
           onClick={() => setBodyPart(null)}
-          className="absolute left-6 bottom-6 z-20 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-xs text-bm-muted transition hover:text-bm-text"
+          className="absolute left-6 bottom-6 z-30 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-xs text-bm-muted transition hover:text-bm-text"
         >
           전체 보기
         </button>
@@ -108,7 +110,10 @@ const Stage3D = () => {
       ) : null}
 
       {selectedSystem ? (
-        <div className="absolute bottom-5 left-1/2 z-20 flex w-[min(90%,520px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-[24px] border border-bm-border bg-bm-panel-soft px-4 py-3 text-xs text-bm-muted backdrop-blur">
+        <div
+          className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-[24px] border border-bm-border bg-bm-panel-soft px-5 py-3 text-xs text-bm-muted backdrop-blur"
+          style={{ width: `${barWidth}px` }}
+        >
           {parts.map((part) => {
             const isActive = selectedBodyPart === part.id;
             const dimmed = selectedBodyPart && !isActive;
