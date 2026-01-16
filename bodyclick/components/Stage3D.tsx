@@ -52,12 +52,64 @@ const Stage3D = () => {
   const normalizeSplineName = (name: string) =>
     name.trim().toLowerCase().replace(/[\s-]+/g, "_");
 
+  const resolveBodyPartId = (rawName: string) => {
+    const normalized = normalizeSplineName(rawName);
+    if (!normalized) {
+      return null;
+    }
+
+    const partIds = Object.keys(BODY_PART_LOOKUP) as Array<
+      keyof typeof BODY_PART_LOOKUP
+    >;
+    const findMatch = (value: string) =>
+      partIds.find(
+        (partId) => value === partId || value.startsWith(`${partId}_`),
+      ) ?? null;
+
+    let match = findMatch(normalized);
+    if (match) {
+      return match;
+    }
+
+    const tokens = normalized.split("_").filter(Boolean);
+    const sideMap: Record<string, "left" | "right"> = {
+      l: "left",
+      r: "right",
+      left: "left",
+      right: "right",
+    };
+    const sideIndex = tokens.findIndex((token) => token in sideMap);
+    if (sideIndex !== -1) {
+      const side = sideMap[tokens[sideIndex]];
+      const baseTokens = tokens.filter((_, index) => index !== sideIndex);
+      const baseCandidates = [
+        baseTokens[0],
+        baseTokens[baseTokens.length - 1],
+      ].filter((token): token is string => Boolean(token));
+      for (const base of new Set(baseCandidates)) {
+        match = findMatch(`${base}_${side}`);
+        if (match) {
+          return match;
+        }
+      }
+      if (baseTokens.length) {
+        match = findMatch(baseTokens.join("_"));
+        if (match) {
+          return match;
+        }
+      }
+    }
+
+    return null;
+  };
+
   const handleSplineMouseDown = useCallback(
     (event: SplineEvent) => {
-      const normalized = normalizeSplineName(event.target.name);
-      const partId = BODY_PART_LOOKUP[normalized as keyof typeof BODY_PART_LOOKUP]
-        ? (normalized as keyof typeof BODY_PART_LOOKUP)
-        : null;
+      const objectName = event.object?.name;
+      if (!objectName) {
+        return;
+      }
+      const partId = resolveBodyPartId(objectName);
       if (!partId) {
         return;
       }
