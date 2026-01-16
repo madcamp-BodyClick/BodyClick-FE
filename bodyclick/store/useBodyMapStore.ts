@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SPEObject } from "@splinetool/runtime";
 
 export type SystemKey =
   | "MUSCULO"
@@ -257,20 +258,53 @@ export const applyBodyPartFocusOpacity = (activePart: BodyPartKey | null) => {
   return parts;
 };
 
-export const focusCameraOnPart = (partId: BodyPartKey) => {
+export const focusCameraOnPart = (
+  partId: BodyPartKey,
+  camera?: SPEObject | null,
+  target?: SPEObject | null,
+) => {
   const preset = CAMERA_PRESETS[partId];
-  if (!preset) {
+  if (!preset || !camera) {
     return;
   }
 
   // TODO: Spline Camera API로 preset.position과 preset.lookAt으로 이동하세요.
   // TODO: ease-in-out 곡선으로 느린 진입과 안정적인 정지를 구현하세요.
   // preset.zoom이 있다면 함께 적용하세요.
+  const [x, y, z] = preset.position;
+  camera.position.x = x;
+  camera.position.y = y;
+  camera.position.z = z;
+
+  if (target) {
+    const [lx, ly, lz] = preset.lookAt;
+    target.position.x = lx;
+    target.position.y = ly;
+    target.position.z = lz;
+  }
 };
 
-export const resetCameraToDefault = () => {
+export const resetCameraToDefault = (
+  camera?: SPEObject | null,
+  target?: SPEObject | null,
+) => {
   // TODO: Spline Camera API로 DEFAULT_CAMERA로 복귀하세요.
   // TODO: ease-in-out 곡선으로 천천히 원위치하세요.
+  if (!camera) {
+    return;
+  }
+
+  const [x, y, z] = DEFAULT_CAMERA.position;
+  camera.position.x = x;
+  camera.position.y = y;
+  camera.position.z = z;
+
+  if (target) {
+    const [lx, ly, lz] = DEFAULT_CAMERA.lookAt;
+    target.position.x = lx;
+    target.position.y = ly;
+    target.position.z = lz;
+  }
 };
 
 type BodyMapState = {

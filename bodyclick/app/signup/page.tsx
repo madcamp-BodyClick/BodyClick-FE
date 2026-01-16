@@ -2,15 +2,14 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "../../store/useAuthStore";
 
-const LoginPage = () => {
+const SignupPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const login = useAuthStore((state) => state.login);
   const router = useRouter();
 
   useEffect(() => {
@@ -24,8 +23,7 @@ const LoginPage = () => {
     if (!email.trim()) {
       return;
     }
-    login(email.trim());
-    router.push("/explore");
+    router.push("/login");
   };
 
   return (
@@ -44,20 +42,20 @@ const LoginPage = () => {
                 router.back();
                 return;
               }
-              router.push("/explore");
+              router.push("/login");
             }}
             className="absolute right-6 top-6 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-xs text-bm-muted transition hover:text-bm-text"
           >
             취소
           </button>
           <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-bm-muted">
-            바디클릭 로그인
+            바디클릭 회원가입
           </p>
           <h1 className="mt-3 text-2xl font-semibold text-bm-text">
-            의료 AI 상담을 시작하세요
+            전문 AI 상담을 위한 계정 만들기
           </h1>
           <p className="mt-2 text-sm text-bm-muted">
-            선택한 부위에 맞춘 전문 AI 상담을 이용할 수 있습니다.
+            이메일로 계정을 생성하면 상담 내역을 안전하게 관리할 수 있습니다.
           </p>
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -84,25 +82,26 @@ const LoginPage = () => {
                 type="password"
                 className="h-11 w-full rounded-xl border border-bm-border bg-bm-surface-soft px-3 text-sm text-bm-text placeholder:text-bm-muted focus:border-bm-accent focus:outline-none"
                 placeholder="8자리 이상"
+                required
               />
             </div>
             <button
               type="submit"
               className="mt-2 w-full rounded-xl bg-bm-accent px-4 py-3 text-sm font-semibold text-black transition hover:bg-bm-accent-strong"
             >
-              로그인
+              회원가입
             </button>
           </form>
 
           <div className="mt-5 flex items-center justify-between text-xs text-bm-muted">
-            <span>계정이 없으신가요?</span>
-            <Link className="font-semibold text-bm-text hover:text-bm-accent" href="/signup">
-              회원가입
+            <span>이미 계정이 있으신가요?</span>
+            <Link className="font-semibold text-bm-text hover:text-bm-accent" href="/login">
+              로그인
             </Link>
           </div>
 
           <p className="mt-4 text-[11px] text-bm-muted">
-            로그인은 인증된 의료 상담 환경을 위한 절차입니다.
+            계정 생성은 인증된 의료 상담 환경을 위한 절차입니다.
           </p>
         </div>
       </div>
@@ -110,4 +109,4 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default SignupPage;

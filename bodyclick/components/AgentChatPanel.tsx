@@ -234,7 +234,7 @@ const AgentChatPanel = () => {
             type="button"
             onClick={handleSend}
             disabled={isDisabled}
-            className="rounded-xl bg-bm-accent px-3 py-2 text-center text-xs font-semibold leading-tight text-black transition hover:bg-bm-accent-strong disabled:cursor-not-allowed disabled:opacity-60 whitespace-normal break-words"
+            className="min-w-[72px] rounded-xl bg-bm-accent px-3 py-2 text-center text-xs font-semibold leading-none text-black transition hover:bg-bm-accent-strong disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
           >
             보내기
           </button>

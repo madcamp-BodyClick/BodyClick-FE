@@ -206,7 +206,7 @@ const InfoPanel = () => {
 
   return (
     <aside
-      className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-[28px] border border-bm-border bg-bm-panel px-6 py-6 transition duration-500 lg:static lg:z-10 lg:h-full lg:w-[380px] lg:rounded-[28px] lg:border lg:px-6 lg:py-6 ${
+      className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-[28px] border border-bm-border bg-bm-panel px-6 py-6 transition duration-500 lg:static lg:z-10 lg:h-full lg:w-[340px] lg:rounded-[28px] lg:border lg:px-6 lg:py-6 ${
         isOpen
           ? "translate-y-0 opacity-100"
           : "translate-y-full opacity-0 pointer-events-none lg:translate-y-0 lg:opacity-100 lg:pointer-events-auto"

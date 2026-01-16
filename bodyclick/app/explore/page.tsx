@@ -11,7 +11,7 @@ const ExplorePage = () => {
           <div className="absolute inset-0 bg-[radial-gradient(50%_50%_at_80%_10%,rgba(255,255,255,0.05)_0%,transparent_60%)]" />
         </div>
 
-        <div className="relative mx-auto flex min-h-screen max-w-[1400px] flex-col gap-8 px-5 pb-20 pt-6 lg:flex-row lg:items-stretch lg:gap-8 lg:px-10 lg:pt-24">
+        <div className="relative mx-auto flex min-h-screen max-w-[1520px] flex-col gap-8 px-5 pb-20 pt-6 lg:flex-row lg:items-stretch lg:gap-8 lg:pl-6 lg:pr-10 lg:pt-24">
           <header className="flex items-center justify-between lg:absolute lg:left-10 lg:right-10 lg:top-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-bm-muted">
@@ -24,7 +24,7 @@ const ExplorePage = () => {
             </p>
           </header>
 
-          <div className="order-2 mt-4 flex items-center justify-center lg:order-1 lg:mt-0 lg:w-48 lg:items-start">
+          <div className="order-2 mt-4 flex items-center justify-center lg:order-1 lg:mt-0 lg:w-48 lg:-ml-6 lg:items-start">
             <SystemLayerSelector />
           </div>
 

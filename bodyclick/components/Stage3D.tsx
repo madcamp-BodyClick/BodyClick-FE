@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Application, SplineEvent, SPEObject } from "@splinetool/runtime";
+import dynamic from "next/dynamic";
 import {
   BODY_PART_LOOKUP,
   BODY_PARTS,
+  CAMERA_PRESETS,
+  DEFAULT_CAMERA,
   SYSTEM_LABELS,
   applyBodyPartFocusOpacity,
   applySystemLayerOpacity,
@@ -12,12 +16,59 @@ import {
   useBodyMapStore,
 } from "../store/useBodyMapStore";
 
+const Spline = dynamic(
+  () => import("@splinetool/react-spline").then((mod) => mod.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center text-xs text-bm-muted">
+        3D 씬을 불러오는 중입니다...
+      </div>
+    ),
+  },
+);
+
 const Stage3D = () => {
+
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
+  const setSystem = useBodyMapStore((state) => state.setSystem);
 
   const [isFocusing, setIsFocusing] = useState(false);
+  const splineAppRef = useRef<Application | null>(null);
+  const cameraRef = useRef<SPEObject | null>(null);
+  const cameraTargetRef = useRef<SPEObject | null>(null);
+
+  const handleSplineLoad = useCallback((spline: Application) => {
+    splineAppRef.current = spline;
+    cameraRef.current = spline.findObjectByName("Camera") ?? null;
+    cameraTargetRef.current = spline.findObjectByName("CameraTarget") ?? null;
+    if (DEFAULT_CAMERA.zoom) {
+      spline.setZoom(DEFAULT_CAMERA.zoom);
+    }
+  }, []);
+
+  const normalizeSplineName = (name: string) =>
+    name.trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+  const handleSplineMouseDown = useCallback(
+    (event: SplineEvent) => {
+      const normalized = normalizeSplineName(event.target.name);
+      const partId = BODY_PART_LOOKUP[normalized as keyof typeof BODY_PART_LOOKUP]
+        ? (normalized as keyof typeof BODY_PART_LOOKUP)
+        : null;
+      if (!partId) {
+        return;
+      }
+      const partSystem = BODY_PART_LOOKUP[partId].system;
+      if (selectedSystem !== partSystem) {
+        setSystem(partSystem);
+      }
+      setBodyPart(partId);
+    },
+    [selectedSystem, setBodyPart, setSystem],
+  );
 
   useEffect(() => {
     if (!selectedBodyPart) {
@@ -30,7 +81,10 @@ const Stage3D = () => {
     let settleTimer: number | undefined;
 
     if (!selectedBodyPart) {
-      resetCameraToDefault();
+      resetCameraToDefault(cameraRef.current, cameraTargetRef.current);
+      if (splineAppRef.current && DEFAULT_CAMERA.zoom) {
+        splineAppRef.current.setZoom(DEFAULT_CAMERA.zoom);
+      }
       applyBodyPartFocusOpacity(null);
       setIsFocusing(false);
       return;
@@ -38,7 +92,15 @@ const Stage3D = () => {
 
     setIsFocusing(true);
     focusTimer = window.setTimeout(() => {
-      focusCameraOnPart(selectedBodyPart);
+      focusCameraOnPart(
+        selectedBodyPart,
+        cameraRef.current,
+        cameraTargetRef.current,
+      );
+      const preset = CAMERA_PRESETS[selectedBodyPart];
+      if (preset?.zoom && splineAppRef.current) {
+        splineAppRef.current.setZoom(preset.zoom);
+      }
       applyBodyPartFocusOpacity(selectedBodyPart);
     }, 120);
     settleTimer = window.setTimeout(() => setIsFocusing(false), 950);
@@ -62,7 +124,7 @@ const Stage3D = () => {
     parts.length <= 1 ? 180 : parts.length <= 3 ? 300 : 480;
 
   return (
-    <section className="relative h-[68vh] min-h-[420px] w-full overflow-hidden rounded-[32px] border border-bm-border bg-bm-surface-soft animate-[rise-in_0.9s_ease-out]">
+    <section className="relative h-[68vh] min-h-[420px] w-full overflow-hidden rounded-[32px] border border-bm-border bg-bm-surface-soft animate-[rise-in_0.9s_ease-out] lg:h-[76vh] lg:min-h-[520px]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_20%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_80%_at_50%_90%,rgba(255,255,255,0.04)_0%,transparent_60%)]" />
       <div
@@ -77,13 +139,11 @@ const Stage3D = () => {
             isFocusing ? "scale-[1.02]" : "scale-100"
           }`}
         >
-          <iframe
-            title="바디클릭 3D"
-            src="https://my.spline.design/cybernetichuman-8VM8v7LCw7oUtrURFoDjorWq/"
+          <Spline
+            scene="https://prod.spline.design/WRLoZ5fC20uPwQcw/scene.splinecode"
+            onLoad={handleSplineLoad}
+            onSplineMouseDown={handleSplineMouseDown}
             className="h-full w-full"
-            frameBorder="0"
-            allowFullScreen
-            loading="lazy"
           />
         </div>
       </div>
