@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0b0b0a;
+  --foreground: #f4f4f1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-bm-bg: #0b0b0a;
+  --color-bm-surface: #121211;
+  --color-bm-surface-soft: rgba(18, 18, 17, 0.78);
+  --color-bm-panel: #181716;
+  --color-bm-panel-soft: rgba(24, 23, 22, 0.76);
+  --color-bm-border: rgba(255, 255, 255, 0.08);
+  --color-bm-border-strong: rgba(255, 255, 255, 0.16);
+  --color-bm-text: #f4f4f1;
+  --color-bm-muted: #9c9c93;
+  --color-bm-accent: #63c7db;
+  --color-bm-accent-strong: #7fd7e7;
+  --color-bm-accent-soft: rgba(99, 199, 219, 0.16);
+  --color-bm-accent-faint: rgba(99, 199, 219, 0.08);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+body {
+  background: var(--color-bm-bg);
+  color: var(--color-bm-text);
+  font-family: var(--font-geist-sans);
+  color-scheme: dark;
+}
