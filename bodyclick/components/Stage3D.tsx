@@ -5,8 +5,10 @@ import {
   BODY_PART_LOOKUP,
   BODY_PARTS,
   SYSTEM_LABELS,
+  applyBodyPartFocusOpacity,
   applySystemLayerOpacity,
   focusCameraOnPart,
+  resetCameraToDefault,
   useBodyMapStore,
 } from "../store/useBodyMapStore";
 
@@ -18,17 +20,37 @@ const Stage3D = () => {
   const [isFocusing, setIsFocusing] = useState(false);
 
   useEffect(() => {
-    applySystemLayerOpacity(selectedSystem);
-  }, [selectedSystem]);
+    if (!selectedBodyPart) {
+      applySystemLayerOpacity(selectedSystem);
+    }
+  }, [selectedSystem, selectedBodyPart]);
 
   useEffect(() => {
+    let focusTimer: number | undefined;
+    let settleTimer: number | undefined;
+
     if (!selectedBodyPart) {
+      resetCameraToDefault();
+      applyBodyPartFocusOpacity(null);
+      setIsFocusing(false);
       return;
     }
+
     setIsFocusing(true);
-    focusCameraOnPart(selectedBodyPart);
-    const timer = window.setTimeout(() => setIsFocusing(false), 900);
-    return () => window.clearTimeout(timer);
+    focusTimer = window.setTimeout(() => {
+      focusCameraOnPart(selectedBodyPart);
+      applyBodyPartFocusOpacity(selectedBodyPart);
+    }, 120);
+    settleTimer = window.setTimeout(() => setIsFocusing(false), 950);
+
+    return () => {
+      if (focusTimer) {
+        window.clearTimeout(focusTimer);
+      }
+      if (settleTimer) {
+        window.clearTimeout(settleTimer);
+      }
+    };
   }, [selectedBodyPart]);
 
   const parts = selectedSystem ? BODY_PARTS[selectedSystem] : [];
@@ -54,7 +76,7 @@ const Stage3D = () => {
           }`}
         >
           <iframe
-            title="바디맵 3D"
+            title="바디클릭 3D"
             src="https://my.spline.design/cybernetichuman-8VM8v7LCw7oUtrURFoDjorWq/"
             className="h-full w-full"
             frameBorder="0"
@@ -68,6 +90,16 @@ const Stage3D = () => {
         <span className="h-1.5 w-1.5 rounded-full bg-bm-accent" />
         {systemLabel}
       </div>
+
+      {selectedBodyPart ? (
+        <button
+          type="button"
+          onClick={() => setBodyPart(null)}
+          className="absolute left-6 bottom-6 z-20 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-xs text-bm-muted transition hover:text-bm-text"
+        >
+          전체 보기
+        </button>
+      ) : null}
 
       {selectedPartLabel ? (
         <div className="absolute right-6 top-6 z-20 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-xs text-bm-text">
