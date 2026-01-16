@@ -5,10 +5,15 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "../../store/useAuthStore";
+import BirthDatePicker from "../../components/BirthDatePicker";
+import GenderSelect from "../../components/GenderSelect";
 
 const SignupPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [gender, setGender] = useState("");
+  const [birthdate, setBirthdate] = useState("");
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const router = useRouter();
 
@@ -18,9 +23,10 @@ const SignupPage = () => {
     }
   }, [isAuthenticated, router]);
 
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!email.trim()) {
+    if (!email.trim() || !name.trim() || !birthdate || !gender) {
       return;
     }
     router.push("/login");
@@ -61,6 +67,19 @@ const SignupPage = () => {
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
+                이름
+              </label>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                type="text"
+                className="h-11 w-full rounded-xl border border-bm-border bg-bm-surface-soft px-3 text-sm text-bm-text placeholder:text-bm-muted focus:border-bm-accent focus:outline-none"
+                placeholder="이름"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
                 이메일
               </label>
               <input
@@ -70,6 +89,18 @@ const SignupPage = () => {
                 className="h-11 w-full rounded-xl border border-bm-border bg-bm-surface-soft px-3 text-sm text-bm-text placeholder:text-bm-muted focus:border-bm-accent focus:outline-none"
                 placeholder="이메일 주소"
                 required
+              />
+            </div>
+            <GenderSelect
+              label="성별"
+              value={gender}
+              onChange={setGender}
+            />
+            <div className="space-y-2">
+              <BirthDatePicker
+                label="생년월일"
+                value={birthdate}
+                onChange={setBirthdate}
               />
             </div>
             <div className="space-y-2">

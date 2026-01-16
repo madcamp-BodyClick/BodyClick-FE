@@ -61,51 +61,13 @@ const Stage3D = () => {
     const partIds = Object.keys(BODY_PART_LOOKUP) as Array<
       keyof typeof BODY_PART_LOOKUP
     >;
-    const findMatch = (value: string) =>
-      partIds.find(
-        (partId) => value === partId || value.startsWith(`${partId}_`),
-      ) ?? null;
-
-    let match = findMatch(normalized);
-    if (match) {
-      return match;
-    }
-
-    const tokens = normalized.split("_").filter(Boolean);
-    const sideMap: Record<string, "left" | "right"> = {
-      l: "left",
-      r: "right",
-      left: "left",
-      right: "right",
-    };
-    const sideIndex = tokens.findIndex((token) => token in sideMap);
-    if (sideIndex !== -1) {
-      const side = sideMap[tokens[sideIndex]];
-      const baseTokens = tokens.filter((_, index) => index !== sideIndex);
-      const baseCandidates = [
-        baseTokens[0],
-        baseTokens[baseTokens.length - 1],
-      ].filter((token): token is string => Boolean(token));
-      for (const base of new Set(baseCandidates)) {
-        match = findMatch(`${base}_${side}`);
-        if (match) {
-          return match;
-        }
-      }
-      if (baseTokens.length) {
-        match = findMatch(baseTokens.join("_"));
-        if (match) {
-          return match;
-        }
-      }
-    }
-
-    return null;
+    return partIds.find((partId) => normalized.includes(partId)) ?? null;
   };
 
   const handleSplineMouseDown = useCallback(
-    (event: SplineEvent) => {
+    (event: SplineEvent & { object?: { name?: string } }) => {
       const objectName = event.object?.name;
+      console.log("Spline click object name:", objectName);
       if (!objectName) {
         return;
       }
@@ -180,7 +142,7 @@ const Stage3D = () => {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_20%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_80%_at_50%_90%,rgba(255,255,255,0.04)_0%,transparent_60%)]" />
       <div
-        className={`absolute inset-0 bg-black/30 transition-opacity duration-700 ${
+        className={`pointer-events-none absolute inset-0 bg-black/30 transition-opacity duration-700 ${
           selectedBodyPart ? "opacity-100" : "opacity-0"
         }`}
       />
