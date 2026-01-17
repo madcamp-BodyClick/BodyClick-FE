@@ -54,6 +54,13 @@ const DEBUG_BOX_COLOR = "#f0b429";
 const DEBUG_BOX_OPACITY = 0.18;
 const DEBUG_CENTER_SIZE = 0.045;
 const SHOW_DEBUG_RANGES = false;
+const NECK_PIVOT_OFFSET_Y = 0.18;
+const GAZE_MAX_PITCH = 0.18;
+const GAZE_MAX_YAW = 0.25;
+const BODY_MAX_PITCH = 0.08;
+const BODY_MAX_YAW = 0.12;
+const GAZE_LERP_SPEED = 10;
+const BODY_LERP_SPEED = 3.2;
 
 const BODY_PART_TO_ORGAN_KEY: Partial<Record<BodyPartKey, OrganKey>> = {
   heart: "heart",
@@ -180,13 +187,55 @@ const HumanModel = ({
   position?: [number, number, number];
 }) => {
   const { scene } = useGLTF(MODEL_URL);
+  const bodyGroupRef = useRef<Group | null>(null);
+  const gazeGroupRef = useRef<Group | null>(null);
+  const gazeRotationRef = useRef(new Vector3(0, 0, 0));
+  const bodyRotationRef = useRef(new Vector3(0, 0, 0));
+
+  useFrame(({ mouse }, delta) => {
+    if (!bodyGroupRef.current || !gazeGroupRef.current) {
+      return;
+    }
+
+    const targetGaze = new Vector3(
+      -mouse.y * GAZE_MAX_PITCH,
+      mouse.x * GAZE_MAX_YAW,
+      0,
+    );
+    const targetBody = new Vector3(
+      -mouse.y * BODY_MAX_PITCH,
+      mouse.x * BODY_MAX_YAW,
+      0,
+    );
+
+    const gazeAlpha = 1 - Math.exp(-delta * GAZE_LERP_SPEED);
+    const bodyAlpha = 1 - Math.exp(-delta * BODY_LERP_SPEED);
+    gazeRotationRef.current.lerp(targetGaze, gazeAlpha);
+    bodyRotationRef.current.lerp(targetBody, bodyAlpha);
+
+    bodyGroupRef.current.rotation.set(
+      bodyRotationRef.current.x,
+      bodyRotationRef.current.y,
+      bodyRotationRef.current.z,
+    );
+    gazeGroupRef.current.rotation.set(
+      gazeRotationRef.current.x - bodyRotationRef.current.x,
+      gazeRotationRef.current.y - bodyRotationRef.current.y,
+      0,
+    );
+  });
+
   return (
-    <primitive
-      ref={modelRef}
-      object={scene}
-      position={position}
-      onPointerDown={onPointerDown}
-    />
+    <group ref={bodyGroupRef} position={position}>
+      <group ref={gazeGroupRef}>
+        <primitive
+          ref={modelRef}
+          object={scene}
+          position={[0, NECK_PIVOT_OFFSET_Y, 0]}
+          onPointerDown={onPointerDown}
+        />
+      </group>
+    </group>
   );
 };
 
