@@ -12,12 +12,11 @@ export type BodyPartKey =
   | "knee_left"
   | "knee_right"
   | "shoulder_left"
-  | "elbow_left"
+  | "shoulder_right"
   | "spine"
   | "heart"
   | "aorta"
-  | "lung_left"
-  | "lung_right"
+  | "lung"
   | "trachea"
   | "stomach"
   | "liver"
@@ -94,7 +93,7 @@ export const BODY_PARTS: Record<SystemKey, BodyPart[]> = {
     { id: "knee_left", label: "왼쪽 무릎" },
     { id: "knee_right", label: "오른쪽 무릎" },
     { id: "shoulder_left", label: "왼쪽 어깨" },
-    { id: "elbow_left", label: "왼쪽 팔꿈치" },
+    { id: "shoulder_right", label: "오른쪽 어깨" },
     { id: "spine", label: "척추" },
   ],
   CARDIO: [
@@ -102,8 +101,7 @@ export const BODY_PARTS: Record<SystemKey, BodyPart[]> = {
     { id: "aorta", label: "대동맥" },
   ],
   RESP: [
-    { id: "lung_left", label: "왼쪽 폐" },
-    { id: "lung_right", label: "오른쪽 폐" },
+    { id: "lung", label: "폐" },
     { id: "trachea", label: "기관" },
   ],
   DIGEST: [
@@ -144,12 +142,11 @@ export const BODY_PART_AGENT: Record<BodyPartKey, AgentKey> = {
   knee_left: "orthopedic",
   knee_right: "orthopedic",
   shoulder_left: "orthopedic",
-  elbow_left: "orthopedic",
+  shoulder_right: "orthopedic",
   spine: "orthopedic",
   heart: "cardiology",
   aorta: "vascular",
-  lung_left: "pulmonology",
-  lung_right: "pulmonology",
+  lung: "pulmonology",
   trachea: "pulmonology",
   stomach: "gastroenterology",
   liver: "gastroenterology",
@@ -192,12 +189,11 @@ export const CAMERA_PRESETS: Record<BodyPartKey, CameraPreset> = {
   knee_left: { position: [-0.6, 0.2, 3.2], lookAt: [-0.2, 0.2, 0] },
   knee_right: { position: [0.6, 0.2, 3.2], lookAt: [0.2, 0.2, 0] },
   shoulder_left: { position: [-0.9, 1.3, 3.1], lookAt: [-0.35, 1.1, 0] },
-  elbow_left: { position: [-0.95, 0.95, 3.2], lookAt: [-0.45, 0.85, 0] },
+  shoulder_right: { position: [0.9, 1.3, 3.1], lookAt: [0.35, 1.1, 0] },
   spine: { position: [0, 0.9, 3.6], lookAt: [0, 0.85, 0] },
   heart: { position: [0.2, 0.95, 3.1], lookAt: [0.1, 0.9, 0] },
   aorta: { position: [0.25, 1.15, 3.2], lookAt: [0.1, 1.05, 0] },
-  lung_left: { position: [-0.35, 1.1, 3.25], lookAt: [-0.15, 1.0, 0] },
-  lung_right: { position: [0.35, 1.1, 3.25], lookAt: [0.15, 1.0, 0] },
+  lung: { position: [0, 1.1, 3.25], lookAt: [0, 1.0, 0] },
   trachea: { position: [0, 1.25, 3.15], lookAt: [0, 1.1, 0] },
   stomach: { position: [-0.1, 0.7, 3.25], lookAt: [-0.05, 0.6, 0] },
   liver: { position: [0.35, 0.75, 3.3], lookAt: [0.2, 0.65, 0] },

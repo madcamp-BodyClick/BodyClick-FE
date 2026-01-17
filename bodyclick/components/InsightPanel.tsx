@@ -87,8 +87,7 @@ const BODY_PART_INSIGHTS: Record<BodyPartKey, BodyPartInsight> = {
     signals: ["맥박 차이", "흉통 또는 등 통증", "혈압 변화"],
     conditions: ["대동맥류", "대동맥 박리", "동맥경화"],
   },
-  lung_left: LUNG_INSIGHT,
-  lung_right: LUNG_INSIGHT,
+  lung: LUNG_INSIGHT,
   trachea: {
     role: [
       "공기가 폐로 들어가는 통로를 유지합니다.",
