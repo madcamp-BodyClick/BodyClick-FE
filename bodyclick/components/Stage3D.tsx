@@ -1,6 +1,14 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Billboard, OrbitControls, useGLTF } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -61,6 +69,7 @@ const BODY_MAX_PITCH = 0.08;
 const BODY_MAX_YAW = 0.12;
 const GAZE_LERP_SPEED = 10;
 const BODY_LERP_SPEED = 3.2;
+const ORGAN_SWAY_MULTIPLIER = 1.35;
 
 const BODY_PART_TO_ORGAN_KEY: Partial<Record<BodyPartKey, OrganKey>> = {
   heart: "heart",
@@ -180,14 +189,15 @@ const BODY_PART_ANCHOR: Partial<
 const HumanModel = ({
   onPointerDown,
   modelRef,
+  bodyGroupRef,
   position,
 }: {
   onPointerDown?: (event: ThreeEvent<PointerEvent>) => void;
   modelRef: React.MutableRefObject<Group | null>;
+  bodyGroupRef: React.MutableRefObject<Group | null>;
   position?: [number, number, number];
 }) => {
   const { scene } = useGLTF(MODEL_URL);
-  const bodyGroupRef = useRef<Group | null>(null);
   const gazeGroupRef = useRef<Group | null>(null);
   const gazeRotationRef = useRef(new Vector3(0, 0, 0));
   const bodyRotationRef = useRef(new Vector3(0, 0, 0));
@@ -350,6 +360,31 @@ const OrganModel = ({
       </group>
     </Billboard>
   );
+};
+
+const OrganFollower = ({
+  bodyGroupRef,
+  children,
+}: {
+  bodyGroupRef: React.MutableRefObject<Group | null>;
+  children: ReactNode;
+}) => {
+  const groupRef = useRef<Group | null>(null);
+
+  useFrame(() => {
+    if (!groupRef.current || !bodyGroupRef.current) {
+      return;
+    }
+    // Keep organ visuals aligned with the body sway while preserving world position.
+    const bodyRotation = bodyGroupRef.current.rotation;
+    groupRef.current.rotation.set(
+      bodyRotation.x * ORGAN_SWAY_MULTIPLIER,
+      bodyRotation.y * ORGAN_SWAY_MULTIPLIER,
+      bodyRotation.z * ORGAN_SWAY_MULTIPLIER,
+    );
+  });
+
+  return <group ref={groupRef}>{children}</group>;
 };
 
 const CameraRig = ({
@@ -659,6 +694,7 @@ const Stage3D = () => {
   const cameraRef = useRef<Camera | null>(null);
   const targetPositionRef = useRef<Vector3 | null>(null);
   const targetLookAtRef = useRef<Vector3 | null>(null);
+  const bodyGroupRef = useRef<Group | null>(null);
   const modelRef = useRef<Group | null>(null);
   const modelBoundsRef = useRef<Box3 | null>(null);
   const [modelBounds, setModelBounds] = useState<Box3 | null>(null);
@@ -882,6 +918,7 @@ const Stage3D = () => {
               <HumanModel
                 onPointerDown={handlePointerDown}
                 modelRef={modelRef}
+                bodyGroupRef={bodyGroupRef}
                 position={[bodyOffsetX, 0, 0]}
               />
             </Suspense>
@@ -900,11 +937,13 @@ const Stage3D = () => {
             />
             {activeOrgan ? (
               <Suspense fallback={null}>
-                <OrganModel
-                  key={`${activeOrgan.key}-${activeOrgan.position.join(",")}`}
-                  organKey={activeOrgan.key}
-                  position={activeOrgan.position}
-                />
+                <OrganFollower bodyGroupRef={bodyGroupRef}>
+                  <OrganModel
+                    key={`${activeOrgan.key}-${activeOrgan.position.join(",")}`}
+                    organKey={activeOrgan.key}
+                    position={activeOrgan.position}
+                  />
+                </OrganFollower>
               </Suspense>
             ) : null}
           </Canvas>
