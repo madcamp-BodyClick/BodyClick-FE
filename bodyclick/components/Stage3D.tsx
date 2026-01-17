@@ -1,133 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Application, SplineEvent, SPEObject } from "@splinetool/runtime";
-import dynamic from "next/dynamic";
+import { Suspense, useRef } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, useGLTF } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import type { Group } from "three";
 import {
   BODY_PART_LOOKUP,
   BODY_PARTS,
-  CAMERA_PRESETS,
   DEFAULT_CAMERA,
   SYSTEM_LABELS,
-  applyBodyPartFocusOpacity,
-  applySystemLayerOpacity,
-  focusCameraOnPart,
-  resetCameraToDefault,
   useBodyMapStore,
 } from "../store/useBodyMapStore";
 
-const Spline = dynamic(
-  () => import("@splinetool/react-spline").then((mod) => mod.default),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-full w-full items-center justify-center text-xs text-bm-muted">
-        3D 씬을 불러오는 중입니다...
-      </div>
-    ),
-  },
-);
+const MODEL_URL = "/models/human.glb";
+
+const HumanModel = () => {
+  const { scene } = useGLTF(MODEL_URL);
+  return <primitive object={scene} />;
+};
+
+useGLTF.preload(MODEL_URL);
 
 const Stage3D = () => {
-
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
-  const setSystem = useBodyMapStore((state) => state.setSystem);
 
-  const [isFocusing, setIsFocusing] = useState(false);
-  const splineAppRef = useRef<Application | null>(null);
-  const cameraRef = useRef<SPEObject | null>(null);
-  const cameraTargetRef = useRef<SPEObject | null>(null);
-
-  const handleSplineLoad = useCallback((spline: Application) => {
-    splineAppRef.current = spline;
-    cameraRef.current = spline.findObjectByName("Camera") ?? null;
-    cameraTargetRef.current = spline.findObjectByName("CameraTarget") ?? null;
-    if (DEFAULT_CAMERA.zoom) {
-      spline.setZoom(DEFAULT_CAMERA.zoom);
-    }
-  }, []);
-
-  const normalizeSplineName = (name: string) =>
-    name.trim().toLowerCase().replace(/[\s-]+/g, "_");
-
-  const resolveBodyPartId = (rawName: string) => {
-    const normalized = normalizeSplineName(rawName);
-    if (!normalized) {
-      return null;
-    }
-
-    const partIds = Object.keys(BODY_PART_LOOKUP) as Array<
-      keyof typeof BODY_PART_LOOKUP
-    >;
-    return partIds.find((partId) => normalized.includes(partId)) ?? null;
-  };
-
-  const handleSplineMouseDown = useCallback(
-    (event: SplineEvent & { object?: { name?: string } }) => {
-      const objectName = event.object?.name;
-      console.log("Spline click object name:", objectName);
-      if (!objectName) {
-        return;
-      }
-      const partId = resolveBodyPartId(objectName);
-      if (!partId) {
-        return;
-      }
-      const partSystem = BODY_PART_LOOKUP[partId].system;
-      if (selectedSystem !== partSystem) {
-        setSystem(partSystem);
-      }
-      setBodyPart(partId);
-    },
-    [selectedSystem, setBodyPart, setSystem],
-  );
-
-  useEffect(() => {
-    if (!selectedBodyPart) {
-      applySystemLayerOpacity(selectedSystem);
-    }
-  }, [selectedSystem, selectedBodyPart]);
-
-  useEffect(() => {
-    let focusTimer: number | undefined;
-    let settleTimer: number | undefined;
-
-    if (!selectedBodyPart) {
-      resetCameraToDefault(cameraRef.current, cameraTargetRef.current);
-      if (splineAppRef.current && DEFAULT_CAMERA.zoom) {
-        splineAppRef.current.setZoom(DEFAULT_CAMERA.zoom);
-      }
-      applyBodyPartFocusOpacity(null);
-      setIsFocusing(false);
-      return;
-    }
-
-    setIsFocusing(true);
-    focusTimer = window.setTimeout(() => {
-      focusCameraOnPart(
-        selectedBodyPart,
-        cameraRef.current,
-        cameraTargetRef.current,
-      );
-      const preset = CAMERA_PRESETS[selectedBodyPart];
-      if (preset?.zoom && splineAppRef.current) {
-        splineAppRef.current.setZoom(preset.zoom);
-      }
-      applyBodyPartFocusOpacity(selectedBodyPart);
-    }, 120);
-    settleTimer = window.setTimeout(() => setIsFocusing(false), 950);
-
-    return () => {
-      if (focusTimer) {
-        window.clearTimeout(focusTimer);
-      }
-      if (settleTimer) {
-        window.clearTimeout(settleTimer);
-      }
-    };
-  }, [selectedBodyPart]);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const modelRef = useRef<Group | null>(null);
 
   const parts = selectedSystem ? BODY_PARTS[selectedSystem] : [];
   const selectedPartLabel = selectedBodyPart
@@ -148,17 +49,30 @@ const Stage3D = () => {
       />
 
       <div className="relative z-10 flex h-full w-full items-center justify-center p-4">
-        <div
-          className={`h-full w-full overflow-hidden rounded-[24px] border border-bm-border bg-bm-panel-soft transition-transform duration-700 ${
-            isFocusing ? "scale-[1.02]" : "scale-100"
-          }`}
-        >
-          <Spline
-            scene="https://prod.spline.design/WRLoZ5fC20uPwQcw/scene.splinecode"
-            onLoad={handleSplineLoad}
-            onSplineMouseDown={handleSplineMouseDown}
+        <div className="h-full w-full overflow-hidden rounded-[24px] border border-bm-border bg-bm-panel-soft">
+          <Canvas
             className="h-full w-full"
-          />
+            camera={{
+              position: DEFAULT_CAMERA.position,
+              fov: 45,
+              near: 0.1,
+              far: 100,
+            }}
+          >
+            <ambientLight intensity={0.6} />
+            <directionalLight position={[3, 4, 5]} intensity={1} />
+            <Suspense fallback={null}>
+              <group ref={modelRef}>
+                <HumanModel />
+              </group>
+            </Suspense>
+            <OrbitControls
+              ref={controlsRef}
+              enablePan={false}
+              enableDamping
+              target={DEFAULT_CAMERA.lookAt}
+            />
+          </Canvas>
         </div>
       </div>
 

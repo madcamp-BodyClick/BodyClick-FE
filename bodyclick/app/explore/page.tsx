@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { Bookmark } from "lucide-react";
 import InfoPanel from "../../components/InfoPanel";
 import Stage3D from "../../components/Stage3D";
 import SystemLayerSelector from "../../components/SystemLayerSelector";
 import { useAuthStore } from "../../store/useAuthStore";
-import Link from "next/link";
 import BirthDatePicker from "../../components/BirthDatePicker";
 import GenderSelect from "../../components/GenderSelect";
 
@@ -79,150 +80,159 @@ const ExplorePage = () => {
                 의료 인사이트 인터페이스
               </p>
               {isAuthenticated ? (
-                <div className="relative" ref={profileMenuRef}>
-                  <button
-                    type="button"
-                    onClick={() => setIsProfileOpen((prev) => !prev)}
-                    aria-haspopup="menu"
-                    aria-expanded={isProfileOpen}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-xs font-semibold text-bm-text transition hover:text-bm-accent"
-                  >
-                    {profileInitial}
-                  </button>
-                  {isProfileOpen ? (
-                    <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-bm-border bg-bm-panel px-4 py-3 text-xs text-bm-text shadow-lg">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bm-muted">
-                          내 프로필
-                        </p>
+                <div className="flex items-center gap-2">
+                  <div className="relative" ref={profileMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsProfileOpen((prev) => !prev)}
+                      aria-haspopup="menu"
+                      aria-expanded={isProfileOpen}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-xs font-semibold text-bm-text transition hover:text-bm-accent"
+                    >
+                      {profileInitial}
+                    </button>
+                    {isProfileOpen ? (
+                      <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-bm-border bg-bm-panel px-4 py-3 text-xs text-bm-text shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bm-muted">
+                            내 프로필
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setIsEditingProfile((prev) => !prev)
+                            }
+                            className="rounded-full border border-bm-border bg-bm-panel-soft px-2 py-0.5 text-[10px] text-bm-muted transition hover:text-bm-text"
+                          >
+                            {isEditingProfile ? "닫기" : "프로필 수정"}
+                          </button>
+                        </div>
+
+                        {!isEditingProfile ? (
+                          <div className="mt-2 space-y-1">
+                            <p className="text-sm font-semibold">{user?.name}</p>
+                            <p className="text-[11px] text-bm-muted">
+                              {user?.email}
+                            </p>
+                            <p className="text-[11px] text-bm-muted">
+                              {user?.gender || "성별 미지정"}
+                            </p>
+                            <p className="text-[11px] text-bm-muted">
+                              {user?.birthdate || "생년월일 미지정"}
+                            </p>
+                          </div>
+                        ) : (
+                          <form
+                            className="mt-3 space-y-2"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              updateProfile({
+                                name: profileDraft.name,
+                                email: profileDraft.email,
+                                gender: profileDraft.gender,
+                                birthdate: profileDraft.birthdate,
+                              });
+                              setIsEditingProfile(false);
+                            }}
+                          >
+                            <label className="block">
+                              <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
+                                이름
+                              </span>
+                              <input
+                                type="text"
+                                value={profileDraft.name}
+                                onChange={(event) =>
+                                  setProfileDraft((prev) => ({
+                                    ...prev,
+                                    name: event.target.value,
+                                  }))
+                                }
+                                className="mt-1 h-8 w-full rounded-lg border border-bm-border bg-bm-panel-soft px-2 text-xs text-bm-text"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
+                                이메일
+                              </span>
+                              <input
+                                type="email"
+                                value={profileDraft.email}
+                                onChange={(event) =>
+                                  setProfileDraft((prev) => ({
+                                    ...prev,
+                                    email: event.target.value,
+                                  }))
+                                }
+                                className="mt-1 h-8 w-full rounded-lg border border-bm-border bg-bm-panel-soft px-2 text-xs text-bm-text"
+                              />
+                            </label>
+                            <GenderSelect
+                              label="성별"
+                              value={profileDraft.gender}
+                              onChange={(gender) =>
+                                setProfileDraft((prev) => ({
+                                  ...prev,
+                                  gender,
+                                }))
+                              }
+                              size="compact"
+                              portal={false}
+                            />
+                            <BirthDatePicker
+                              label="생년월일"
+                              value={profileDraft.birthdate}
+                              onChange={(birthdate) =>
+                                setProfileDraft((prev) => ({
+                                  ...prev,
+                                  birthdate,
+                                }))
+                              }
+                              size="compact"
+                              portal={false}
+                            />
+                            <div className="mt-1 flex gap-2">
+                              <button
+                                type="submit"
+                                className="flex-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
+                              >
+                                저장
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsProfileOpen(false);
+                                  setIsEditingProfile(false);
+                                }}
+                                className="flex-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
                         <button
                           type="button"
-                          onClick={() =>
-                            setIsEditingProfile((prev) => !prev)
-                          }
-                          className="rounded-full border border-bm-border bg-bm-panel-soft px-2 py-0.5 text-[10px] text-bm-muted transition hover:text-bm-text"
-                        >
-                          {isEditingProfile ? "닫기" : "프로필 수정"}
-                        </button>
-                      </div>
-
-                      {!isEditingProfile ? (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-sm font-semibold">{user?.name}</p>
-                          <p className="text-[11px] text-bm-muted">
-                            {user?.email}
-                          </p>
-                          <p className="text-[11px] text-bm-muted">
-                            {user?.gender || "성별 미지정"}
-                          </p>
-                          <p className="text-[11px] text-bm-muted">
-                            {user?.birthdate || "생년월일 미지정"}
-                          </p>
-                        </div>
-                      ) : (
-                        <form
-                          className="mt-3 space-y-2"
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            updateProfile({
-                              name: profileDraft.name,
-                              email: profileDraft.email,
-                              gender: profileDraft.gender,
-                              birthdate: profileDraft.birthdate,
-                            });
+                          onClick={() => {
+                            logout();
+                            setIsProfileOpen(false);
                             setIsEditingProfile(false);
                           }}
+                          className="mt-3 w-full rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
                         >
-                          <label className="block">
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
-                              이름
-                            </span>
-                            <input
-                              type="text"
-                              value={profileDraft.name}
-                              onChange={(event) =>
-                                setProfileDraft((prev) => ({
-                                  ...prev,
-                                  name: event.target.value,
-                                }))
-                              }
-                              className="mt-1 h-8 w-full rounded-lg border border-bm-border bg-bm-panel-soft px-2 text-xs text-bm-text"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
-                              이메일
-                            </span>
-                            <input
-                              type="email"
-                              value={profileDraft.email}
-                              onChange={(event) =>
-                                setProfileDraft((prev) => ({
-                                  ...prev,
-                                  email: event.target.value,
-                                }))
-                              }
-                              className="mt-1 h-8 w-full rounded-lg border border-bm-border bg-bm-panel-soft px-2 text-xs text-bm-text"
-                            />
-                          </label>
-                          <GenderSelect
-                            label="성별"
-                            value={profileDraft.gender}
-                            onChange={(gender) =>
-                              setProfileDraft((prev) => ({
-                                ...prev,
-                                gender,
-                              }))
-                            }
-                            size="compact"
-                            portal={false}
-                          />
-                          <BirthDatePicker
-                            label="생년월일"
-                            value={profileDraft.birthdate}
-                            onChange={(birthdate) =>
-                              setProfileDraft((prev) => ({
-                                ...prev,
-                                birthdate,
-                              }))
-                            }
-                            size="compact"
-                            portal={false}
-                          />
-                          <div className="mt-1 flex gap-2">
-                            <button
-                              type="submit"
-                              className="flex-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                            >
-                              저장
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsProfileOpen(false);
-                                setIsEditingProfile(false);
-                              }}
-                              className="flex-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                            >
-                              취소
-                            </button>
-                          </div>
-                        </form>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          logout();
-                          setIsProfileOpen(false);
-                          setIsEditingProfile(false);
-                        }}
-                        className="mt-3 w-full rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                      >
-                        로그아웃
-                      </button>
-                    </div>
-                  ) : null}
+                          로그아웃
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <Link
+                    href="/bookmarks"
+                    aria-label="북마크"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-bm-muted transition hover:text-bm-accent"
+                  >
+                    <Bookmark className="h-4 w-4" />
+                  </Link>
                 </div>
               ) : (
                 <Link

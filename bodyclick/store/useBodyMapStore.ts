@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import type { SPEObject } from "@splinetool/runtime";
 
 export type SystemKey =
   | "MUSCULO"
@@ -180,8 +179,6 @@ export const BODY_PART_LOOKUP = Object.entries(BODY_PARTS).reduce(
 );
 
 const INACTIVE_LAYER_OPACITY = 0.2;
-const FOCUS_DIM_OPACITY = 0.12;
-
 export const DEFAULT_CAMERA: CameraPreset = {
   position: [0, 0.55, 4.6],
   lookAt: [0, 0.8, 0],
@@ -226,85 +223,6 @@ export const getBodyPartOpacity = (
     return 1;
   }
   return getSystemLayerOpacity(activeSystem, partSystem);
-};
-
-export const applySystemLayerOpacity = (activeSystem: SystemKey | null) => {
-  const layers = SYSTEMS.map((system) => ({
-    systemId: system.id,
-    opacity: getSystemLayerOpacity(activeSystem, system.id),
-  }));
-
-  // TODO: Spline material API로 레이어별 투명도를 제어하세요.
-  return layers;
-};
-
-export const getBodyPartFocusOpacity = (
-  activePart: BodyPartKey | null,
-  partId: BodyPartKey,
-) => {
-  if (!activePart) {
-    return 1;
-  }
-  return activePart === partId ? 1 : FOCUS_DIM_OPACITY;
-};
-
-export const applyBodyPartFocusOpacity = (activePart: BodyPartKey | null) => {
-  const parts = Object.keys(BODY_PART_LOOKUP).map((key) => ({
-    partId: key as BodyPartKey,
-    opacity: getBodyPartFocusOpacity(activePart, key as BodyPartKey),
-  }));
-
-  // TODO: Spline material API로 부위별 투명도를 제어하세요.
-  return parts;
-};
-
-export const focusCameraOnPart = (
-  partId: BodyPartKey,
-  camera?: SPEObject | null,
-  target?: SPEObject | null,
-) => {
-  const preset = CAMERA_PRESETS[partId];
-  if (!preset || !camera) {
-    return;
-  }
-
-  // TODO: Spline Camera API로 preset.position과 preset.lookAt으로 이동하세요.
-  // TODO: ease-in-out 곡선으로 느린 진입과 안정적인 정지를 구현하세요.
-  // preset.zoom이 있다면 함께 적용하세요.
-  const [x, y, z] = preset.position;
-  camera.position.x = x;
-  camera.position.y = y;
-  camera.position.z = z;
-
-  if (target) {
-    const [lx, ly, lz] = preset.lookAt;
-    target.position.x = lx;
-    target.position.y = ly;
-    target.position.z = lz;
-  }
-};
-
-export const resetCameraToDefault = (
-  camera?: SPEObject | null,
-  target?: SPEObject | null,
-) => {
-  // TODO: Spline Camera API로 DEFAULT_CAMERA로 복귀하세요.
-  // TODO: ease-in-out 곡선으로 천천히 원위치하세요.
-  if (!camera) {
-    return;
-  }
-
-  const [x, y, z] = DEFAULT_CAMERA.position;
-  camera.position.x = x;
-  camera.position.y = y;
-  camera.position.z = z;
-
-  if (target) {
-    const [lx, ly, lz] = DEFAULT_CAMERA.lookAt;
-    target.position.x = lx;
-    target.position.y = ly;
-    target.position.z = lz;
-  }
 };
 
 type BodyMapState = {

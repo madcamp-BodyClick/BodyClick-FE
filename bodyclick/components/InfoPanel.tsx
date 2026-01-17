@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { Bookmark } from "lucide-react";
 import AgentChatPanel from "./AgentChatPanel";
 import { useAuthStore } from "../store/useAuthStore";
+import { useBookmarkStore } from "../store/useBookmarkStore";
 import {
   BODY_PART_LOOKUP,
   INSIGHT_TABS,
@@ -180,6 +182,15 @@ const InfoPanel = () => {
   const activeTab = useBodyMapStore((state) => state.activeTab);
   const setActiveTab = useBodyMapStore((state) => state.setActiveTab);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const favoriteBodyParts = useBookmarkStore(
+    (state) => state.favoriteBodyParts,
+  );
+  const favoriteHospitals = useBookmarkStore(
+    (state) => state.favoriteHospitals,
+  );
+  const hospitalCatalog = useBookmarkStore((state) => state.hospitalCatalog);
+  const toggleBodyPart = useBookmarkStore((state) => state.toggleBodyPart);
+  const toggleHospital = useBookmarkStore((state) => state.toggleHospital);
   const router = useRouter();
 
   const part = selectedBodyPart ? BODY_PART_LOOKUP[selectedBodyPart] : null;
@@ -187,6 +198,17 @@ const InfoPanel = () => {
     ? BODY_PART_INSIGHTS[selectedBodyPart]
     : null;
   const agent = getAgentProfileForPart(selectedBodyPart);
+  const isPartBookmarked = selectedBodyPart
+    ? favoriteBodyParts.includes(selectedBodyPart)
+    : false;
+  const recommendedHospitals = useMemo(() => {
+    if (!part) {
+      return [];
+    }
+    return hospitalCatalog
+      .filter((hospital) => hospital.systems.includes(part.system))
+      .slice(0, 3);
+  }, [hospitalCatalog, part]);
 
   useEffect(() => {
     if (!isAuthenticated && activeTab === "ai") {
@@ -200,6 +222,17 @@ const InfoPanel = () => {
       return;
     }
     setActiveTab(tabId);
+  };
+
+  const handleTogglePartBookmark = () => {
+    if (!selectedBodyPart) {
+      return;
+    }
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+    toggleBodyPart(selectedBodyPart);
   };
 
   const isOpen = Boolean(selectedSystem && selectedBodyPart);
@@ -234,13 +267,32 @@ const InfoPanel = () => {
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-bm-muted">
               의료 인사이트
             </p>
-            <div>
-              <h2 className="text-2xl font-semibold text-bm-text">
-                {part.label}
-              </h2>
-              <p className="mt-1 text-sm text-bm-muted">
-                {SYSTEM_LABELS[part.system]}
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-semibold text-bm-text">
+                  {part.label}
+                </h2>
+                <p className="mt-1 text-sm text-bm-muted">
+                  {SYSTEM_LABELS[part.system]}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleTogglePartBookmark}
+                className={`flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft transition ${
+                  isPartBookmarked
+                    ? "text-bm-accent"
+                    : "text-bm-muted hover:text-bm-text"
+                }`}
+                aria-pressed={isPartBookmarked}
+                aria-label="부위 북마크"
+              >
+                <Bookmark
+                  className={`h-4 w-4 ${
+                    isPartBookmarked ? "fill-bm-accent" : ""
+                  }`}
+                />
+              </button>
             </div>
             {agent ? (
               <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-xs text-bm-muted">
@@ -298,6 +350,61 @@ const InfoPanel = () => {
                     </li>
                   ))}
                 </ul>
+              </section>
+              <section className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
+                    추천 병원
+                  </p>
+                  <span className="text-[11px] text-bm-muted">
+                    {favoriteHospitals.length}곳 저장됨
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {recommendedHospitals.map((hospital) => {
+                    const isBookmarked = favoriteHospitals.some(
+                      (item) => item.id === hospital.id,
+                    );
+                    return (
+                      <div
+                        key={hospital.id}
+                        className="flex items-start justify-between gap-3 rounded-2xl border border-bm-border bg-bm-panel px-3 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-bm-text">
+                            {hospital.name}
+                          </p>
+                          <p className="mt-1 text-[11px] text-bm-muted">
+                            {hospital.specialty} · {hospital.distanceKm}km
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isAuthenticated) {
+                              router.push("/login");
+                              return;
+                            }
+                            toggleHospital(hospital.id);
+                          }}
+                          className={`flex h-8 w-8 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft transition ${
+                            isBookmarked
+                              ? "text-bm-accent"
+                              : "text-bm-muted hover:text-bm-text"
+                          }`}
+                          aria-pressed={isBookmarked}
+                          aria-label="병원 북마크"
+                        >
+                          <Bookmark
+                            className={`h-3.5 w-3.5 ${
+                              isBookmarked ? "fill-bm-accent" : ""
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
             </div>
           ) : null}

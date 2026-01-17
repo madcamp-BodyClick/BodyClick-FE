@@ -166,3 +166,15 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* react-day-picker: focused day highlight 제거 (BirthDate UX) */
+.rdp-day:focus-visible {
+  background-color: transparent;
+  outline: none;
+}
+
+/* today는 텍스트만 강조 */
+.rdp-day_today:not(.rdp-day_selected) {
+  background-color: transparent !important;
+  font-weight: 600;
+}

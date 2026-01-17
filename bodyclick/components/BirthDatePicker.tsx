@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -21,17 +21,23 @@ type BirthDatePickerProps = {
 };
 
 const parseDate = (value: string) => {
-  if (!value) {
-    return undefined;
-  }
+  if (!value) return undefined;
   const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) {
-    return undefined;
-  }
+  if (!year || !month || !day) return undefined;
   return new Date(year, month - 1, day);
 };
 
 const formatDate = (date: Date) => format(date, "yyyy.MM.dd");
+
+const getFullAge = (birthDate: Date, referenceDate: Date) => {
+  const yearDiff = referenceDate.getFullYear() - birthDate.getFullYear();
+  const hasHadBirthdayThisYear =
+    referenceDate.getMonth() > birthDate.getMonth() ||
+    (referenceDate.getMonth() === birthDate.getMonth() &&
+      referenceDate.getDate() >= birthDate.getDate());
+
+  return hasHadBirthdayThisYear ? yearDiff : yearDiff - 1;
+};
 
 const BirthDatePicker = ({
   label,
@@ -44,10 +50,19 @@ const BirthDatePicker = ({
   const selectedDate = useMemo(() => parseDate(value), [value]);
   const displayValue = selectedDate ? formatDate(selectedDate) : placeholder;
   const today = useMemo(() => new Date(), []);
-  const hasDefaultedRef = useRef(false);
+  const minBirthDate = useMemo(
+    () =>
+      new Date(
+        today.getFullYear() - 14,
+        today.getMonth(),
+        today.getDate(),
+      ),
+    [today],
+  );
   const isCompact = size === "compact";
+
   const [displayMonth, setDisplayMonth] = useState<Date>(
-    selectedDate ?? today,
+    selectedDate ?? minBirthDate,
   );
   const [isOpen, setIsOpen] = useState(false);
   const [isMonthOpen, setIsMonthOpen] = useState(false);
@@ -59,23 +74,16 @@ const BirthDatePicker = ({
     }
   }, [selectedDate]);
 
-  useEffect(() => {
-    if (!value && !hasDefaultedRef.current) {
-      onChange(format(today, "yyyy-MM-dd"));
-      hasDefaultedRef.current = true;
-    }
-  }, [onChange, today, value]);
-
   const yearOptions = useMemo(() => {
     const years: number[] = [];
-    for (let year = today.getFullYear(); year >= 1930; year -= 1) {
+    for (let year = today.getFullYear(); year >= 1930; year--) {
       years.push(year);
     }
     return years;
   }, [today]);
 
   const monthOptions = useMemo(
-    () => Array.from({ length: 12 }, (_, index) => index),
+    () => Array.from({ length: 12 }, (_, i) => i),
     [],
   );
 
@@ -100,6 +108,7 @@ const BirthDatePicker = ({
       >
         {label}
       </label>
+
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -116,34 +125,29 @@ const BirthDatePicker = ({
             <span className="text-bm-muted">▾</span>
           </Button>
         </PopoverTrigger>
+
         <PopoverContent
           align="start"
           portal={portal}
           className="w-auto border-bm-border bg-bm-panel p-0 shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         >
+          {/* Month / Year */}
           <div className="flex items-center justify-between gap-2 px-4 pt-4">
-            <Popover
-              open={isMonthOpen}
-              onOpenChange={(open) => {
-                setIsMonthOpen(open);
-                if (open) {
-                  setIsYearOpen(false);
-                }
-              }}
-            >
+            {/* Month */}
+            <Popover open={isMonthOpen} onOpenChange={(o) => {
+              setIsMonthOpen(o);
+              if (o) setIsYearOpen(false);
+            }}>
               <PopoverTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 rounded-full border border-bm-border bg-bm-panel px-4 text-xs font-semibold text-bm-text/80 hover:bg-bm-panel-soft/60 hover:text-bm-text/90"
+                  className="h-8 rounded-full border border-bm-border bg-bm-panel px-4 text-xs font-semibold text-bm-text/80 hover:bg-bm-panel-soft/60"
                 >
                   {displayMonth.getMonth() + 1}월
                 </Button>
               </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                className="w-40 border-bm-border bg-bm-panel p-2"
-              >
+              <PopoverContent align="start" className="w-40 border-bm-border bg-bm-panel p-2">
                 <div className="grid grid-cols-3 gap-2">
                   {monthOptions.map((month) => (
                     <button
@@ -151,7 +155,7 @@ const BirthDatePicker = ({
                       type="button"
                       onClick={() => handleMonthChange(month)}
                       className={cn(
-                        "min-w-[48px] whitespace-nowrap rounded-md px-2 py-1 text-xs text-bm-text/80 transition hover:bg-bm-accent-faint hover:text-bm-text/90",
+                        "rounded-md px-2 py-1 text-xs text-bm-text/80 hover:bg-bm-accent-faint",
                         month === displayMonth.getMonth() &&
                           "bg-bm-accent text-black",
                       )}
@@ -163,36 +167,29 @@ const BirthDatePicker = ({
               </PopoverContent>
             </Popover>
 
-            <Popover
-              open={isYearOpen}
-              onOpenChange={(open) => {
-                setIsYearOpen(open);
-                if (open) {
-                  setIsMonthOpen(false);
-                }
-              }}
-            >
+            {/* Year */}
+            <Popover open={isYearOpen} onOpenChange={(o) => {
+              setIsYearOpen(o);
+              if (o) setIsMonthOpen(false);
+            }}>
               <PopoverTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 rounded-full border border-bm-border bg-bm-panel px-4 text-xs font-semibold text-bm-text/80 hover:bg-bm-panel-soft/60 hover:text-bm-text/90"
+                  className="h-8 rounded-full border border-bm-border bg-bm-panel px-4 text-xs font-semibold text-bm-text/80 hover:bg-bm-panel-soft/60"
                 >
                   {displayMonth.getFullYear()}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent
-                align="end"
-                className="w-36 border-bm-border bg-bm-panel p-2"
-              >
-                <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+              <PopoverContent align="end" className="w-36 border-bm-border bg-bm-panel p-2">
+                <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
                   {yearOptions.map((year) => (
                     <button
                       key={year}
                       type="button"
                       onClick={() => handleYearChange(year)}
                       className={cn(
-                        "w-full rounded-md px-2 py-1 text-left text-xs text-bm-text/80 transition hover:bg-bm-accent-faint hover:text-bm-text/90",
+                        "w-full rounded-md px-2 py-1 text-left text-xs text-bm-text/80 hover:bg-bm-accent-faint",
                         year === displayMonth.getFullYear() &&
                           "bg-bm-accent text-black",
                       )}
@@ -205,44 +202,55 @@ const BirthDatePicker = ({
             </Popover>
           </div>
 
+          {/* Calendar */}
           <Calendar
             mode="single"
-            captionLayout="label"
             selected={selectedDate}
+            fixedWeeks
             onSelect={(date) => {
-              onChange(date ? format(date, "yyyy-MM-dd") : "");
-              if (date) {
-                setIsOpen(false);
+              if (!date) {
+                onChange("");
+                return;
               }
+
+              if (getFullAge(date, today) < 14) {
+                alert("만 14세 이상만 가입할 수 있어요.");
+                return;
+              }
+
+              onChange(format(date, "yyyy-MM-dd"));
+              setIsOpen(false);
             }}
-            fromYear={1930}
-            toYear={today.getFullYear()}
-            disabled={{ after: today }}
             month={displayMonth}
             onMonthChange={setDisplayMonth}
+            fromYear={1930}
+            toYear={today.getFullYear()}
+            disabled={{ after: minBirthDate }}
             className="p-2 pt-1 text-sm"
             classNames={{
               root: "bg-bm-panel text-bm-text",
-              months: "flex flex-col gap-1",
-              month: "space-y-1",
-              caption: "hidden",
-              dropdowns: "hidden",
-              caption_label: "hidden",
-              nav: "hidden",
               table: "w-full border-collapse",
               head_row: "flex",
               head_cell: "w-9 text-center text-xs text-bm-muted",
               row: "flex",
-              cell: "w-9 text-center",
+              cell: "relative w-9 text-center",
+
+              // 기본 날짜
               day: "h-8 w-8 rounded-full text-sm text-bm-text/80 transition hover:bg-bm-accent-soft hover:text-bm-text",
+
+              // 오늘 날짜: 텍스트만
+              day_today: "font-semibold text-bm-text",
+
+              // 선택된 날짜만 배경
               day_selected:
                 "bg-bm-accent text-black hover:bg-bm-accent-strong",
             }}
           />
+
           <div className="border-t border-bm-border px-4 py-2">
             <button
               type="button"
-              className="w-full text-xs text-bm-muted transition hover:text-bm-text"
+              className="w-full text-xs text-bm-muted hover:text-bm-text"
               onClick={() => onChange("")}
             >
               날짜 지우기
