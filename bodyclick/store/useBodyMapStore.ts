@@ -21,6 +21,7 @@ export type BodyPartKey =
   | "trachea"
   | "stomach"
   | "liver"
+  | "pancreas"
   | "intestine"
   | "brain"
   | "spinal_cord"
@@ -108,6 +109,7 @@ export const BODY_PARTS: Record<SystemKey, BodyPart[]> = {
   DIGEST: [
     { id: "stomach", label: "위" },
     { id: "liver", label: "간" },
+    { id: "pancreas", label: "췌장" },
     { id: "intestine", label: "장" },
   ],
   NERVOUS: [
@@ -151,6 +153,7 @@ export const BODY_PART_AGENT: Record<BodyPartKey, AgentKey> = {
   trachea: "pulmonology",
   stomach: "gastroenterology",
   liver: "gastroenterology",
+  pancreas: "gastroenterology",
   intestine: "gastroenterology",
   brain: "neurology",
   spinal_cord: "neurology",
@@ -198,6 +201,7 @@ export const CAMERA_PRESETS: Record<BodyPartKey, CameraPreset> = {
   trachea: { position: [0, 1.25, 3.15], lookAt: [0, 1.1, 0] },
   stomach: { position: [-0.1, 0.7, 3.25], lookAt: [-0.05, 0.6, 0] },
   liver: { position: [0.35, 0.75, 3.3], lookAt: [0.2, 0.65, 0] },
+  pancreas: { position: [0.05, 0.6, 3.3], lookAt: [0, 0.55, 0] },
   intestine: { position: [0, 0.45, 3.25], lookAt: [0, 0.35, 0] },
   brain: { position: [0, 1.75, 3.1], lookAt: [0, 1.55, 0] },
   spinal_cord: { position: [0, 1.1, 3.5], lookAt: [0, 1.0, 0] },
