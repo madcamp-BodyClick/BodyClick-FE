@@ -40,9 +40,8 @@ const LUNG_INSIGHT: BodyPartInsight = {
 };
 
 const BODY_PART_INSIGHTS: Record<BodyPartKey, BodyPartInsight> = {
-  knee_left: JOINT_INSIGHT,
-  knee_right: JOINT_INSIGHT,
-  shoulder_left: {
+  knee: JOINT_INSIGHT,
+  shoulder: {
     role: [
       "상완골과 견갑골의 회전이 넓은 가동 범위를 만듭니다.",
       "회전근개가 관절을 안정화합니다.",

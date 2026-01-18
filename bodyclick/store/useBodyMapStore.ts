@@ -9,10 +9,8 @@ export type SystemKey =
   | "DERM";
 
 export type BodyPartKey =
-  | "knee_left"
-  | "knee_right"
-  | "shoulder_left"
-  | "shoulder_right"
+  | "knee"
+  | "shoulder"
   | "spine"
   | "heart"
   | "aorta"
@@ -90,10 +88,8 @@ export const SYSTEM_LABELS: Record<SystemKey, string> = {
 
 export const BODY_PARTS: Record<SystemKey, BodyPart[]> = {
   MUSCULO: [
-    { id: "knee_left", label: "왼쪽 무릎" },
-    { id: "knee_right", label: "오른쪽 무릎" },
-    { id: "shoulder_left", label: "왼쪽 어깨" },
-    { id: "shoulder_right", label: "오른쪽 어깨" },
+    { id: "knee", label: "무릎" },
+    { id: "shoulder", label: "어깨" },
     { id: "spine", label: "척추" },
   ],
   CARDIO: [
@@ -139,10 +135,8 @@ export const AGENTS: Record<AgentKey, AgentProfile> = {
 };
 
 export const BODY_PART_AGENT: Record<BodyPartKey, AgentKey> = {
-  knee_left: "orthopedic",
-  knee_right: "orthopedic",
-  shoulder_left: "orthopedic",
-  shoulder_right: "orthopedic",
+  knee: "orthopedic",
+  shoulder: "orthopedic",
   spine: "orthopedic",
   heart: "cardiology",
   aorta: "vascular",
@@ -186,10 +180,8 @@ export const DEFAULT_CAMERA: CameraPreset = {
 };
 
 export const CAMERA_PRESETS: Record<BodyPartKey, CameraPreset> = {
-  knee_left: { position: [-0.6, 0.2, 3.2], lookAt: [-0.2, 0.2, 0] },
-  knee_right: { position: [0.6, 0.2, 3.2], lookAt: [0.2, 0.2, 0] },
-  shoulder_left: { position: [-0.9, 1.3, 3.1], lookAt: [-0.35, 1.1, 0] },
-  shoulder_right: { position: [0.9, 1.3, 3.1], lookAt: [0.35, 1.1, 0] },
+  knee: { position: [0, 0.2, 3.2], lookAt: [0, 0.2, 0] },
+  shoulder: { position: [0, 1.3, 3.1], lookAt: [0, 1.1, 0] },
   spine: { position: [0, 0.9, 3.6], lookAt: [0, 0.85, 0] },
   heart: { position: [0.2, 0.95, 3.1], lookAt: [0.1, 0.9, 0] },
   aorta: { position: [0.25, 1.15, 3.2], lookAt: [0.1, 1.05, 0] },
@@ -230,10 +222,13 @@ type BodyMapState = {
   selectedBodyPart: BodyPartKey | null;
   activeTab: InsightTab;
   chatThreads: Partial<Record<BodyPartKey, ChatMessage[]>>;
+  confirmedSymptoms: Partial<Record<BodyPartKey, boolean>>;
   setSystem: (system: SystemKey) => void;
   setBodyPart: (part: BodyPartKey | null) => void;
   setActiveTab: (tab: InsightTab) => void;
   addChatMessage: (part: BodyPartKey, message: ChatMessage) => void;
+  confirmSymptoms: (part: BodyPartKey) => void;
+  resetSymptoms: (part: BodyPartKey) => void;
 };
 
 export const useBodyMapStore = create<BodyMapState>((set) => ({
@@ -241,6 +236,7 @@ export const useBodyMapStore = create<BodyMapState>((set) => ({
   selectedBodyPart: null,
   activeTab: "overview",
   chatThreads: {},
+  confirmedSymptoms: {},
   setSystem: (system) =>
     set((state) => {
       if (state.selectedSystem === system) {
@@ -257,4 +253,20 @@ export const useBodyMapStore = create<BodyMapState>((set) => ({
         [part]: [...(state.chatThreads[part] ?? []), message],
       },
     })),
+  confirmSymptoms: (part) =>
+    set((state) => ({
+      confirmedSymptoms: {
+        ...state.confirmedSymptoms,
+        [part]: true,
+      },
+    })),
+  resetSymptoms: (part) =>
+    set((state) => {
+      if (!state.confirmedSymptoms[part]) {
+        return state;
+      }
+      const next = { ...state.confirmedSymptoms };
+      delete next[part];
+      return { confirmedSymptoms: next };
+    }),
 }));

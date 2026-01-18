@@ -50,9 +50,8 @@ const LUNG_INSIGHT: BodyPartInsight = {
 };
 
 const BODY_PART_INSIGHTS: Record<BodyPartKey, BodyPartInsight> = {
-  knee_left: JOINT_INSIGHT,
-  knee_right: JOINT_INSIGHT,
-  shoulder_left: {
+  knee: JOINT_INSIGHT,
+  shoulder: {
     summary: "상지의 가동 범위와 안정성을 결정하는 복합 관절입니다.",
     role: [
       "상완골과 견갑골의 회전이 넓은 가동 범위를 만듭니다.",
