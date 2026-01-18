@@ -15,7 +15,7 @@ import {
   useGLTF,
   Environment,
   Float,
-  Center, // [필수] 회전축 교정용
+  Center,
 } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
@@ -75,7 +75,6 @@ const ORGAN_SYSTEM_MAP: Record<OrganKey, string> = {
 
 const FOCUS_DISTANCE = 2.8;
 const CAMERA_LERP_SPEED = 4;
-// [수정 4] 장기 클릭 시 화면 정중앙 배치 (Offset 0)
 const ORGAN_OFFSET_X = 0.0; 
 const ORGAN_TARGET_SIZE = 0.9;
 const ORGAN_CAMERA_OFFSET = 0.35;
@@ -101,22 +100,22 @@ const ORGAN_SCALE_MULTIPLIER: Partial<Record<OrganKey, number>> = {
   spinal: 1.1,
 };
 
-// [수정 2] 초기 등장 위치(Home Position) 교정
-// Z값을 0에 가깝게 설정하여 몸 안쪽 중심에서 시작되도록 함
+// [위치 보정] 등 뒤나 몸 안쪽 깊숙이 배치하기 위해 Z값을 더 낮춤 (-값: 등쪽)
 const ORGAN_POSITION_CORRECTIONS: Partial<Record<OrganKey, [number, number, number]>> = {
-  brain: [0, 0.48, 0.02],
-  lung: [0, 0.18, 0.05],
+  brain: [0, 0.48, 0.0],
+  lung: [0, 0.18, 0.02],
   heart: [0.03, 0.20, 0.05],
-  // 척추/대동맥/기관 등은 몸통 정중앙(Z=0) 근처로 이동
-  aorta: [0, 0.1, 0.0],          
-  bronchus: [0, 0.25, 0.0],      
+  // [수정] 대동맥: 척추 쪽으로 더 깊게 이동 (0.0 -> -0.08)
+  aorta: [0, 0.1, -0.08],          
+  bronchus: [0, 0.28, 0.02],      
   liver: [-0.1, 0.02, 0.05],
-  stomach: [0.08, 0.05, 0.02],   
-  pancreas: [0, -0.02, -0.02],
-  intestine: [0, -0.22, 0.02],   
-  vertebra: [0, 0, 0.0],         
-  spinal: [0, 0.25, 0.0],        
-  // 어깨: 왼쪽으로 확실히 이동
+  stomach: [0.08, 0.05, 0.05],   
+  pancreas: [0, -0.02, -0.05],
+  intestine: [0, -0.22, 0.05],   
+  // [수정] 척추: 등 뒤쪽 깊숙이 (-0.15 유지, 확실한 등쪽)
+  vertebra: [0, 0, -0.15],       
+  // [수정] 척수: 척추 내부
+  spinal: [0, 0.25, -0.15],      
   shoulder: [0.25, 0.3, 0.0],    
   knee: [0.1, -0.65, 0.05],
 };
@@ -150,7 +149,7 @@ const CAMERA_FOCUS_OFFSET: Partial<Record<BodyPartKey, { x: number; y: number; z
     spine: { x: 0, y: 0.01, z: 0 },
     trachea: { x: 0, y: 0.18, z: 0 },
     stomach: { x: 0, y: 0.12, z: 0 },
-    shoulder: { x: 0.25, y: 0.3, z: 0 }, // 어깨 포커스도 왼쪽으로
+    shoulder: { x: 0.25, y: 0.3, z: 0 },
   };
 
 const CAMERA_DISTANCE_MULTIPLIER: Partial<Record<BodyPartKey, number>> = {
@@ -162,20 +161,20 @@ const CAMERA_DISTANCE_MULTIPLIER: Partial<Record<BodyPartKey, number>> = {
   shoulder: 1.05,
 };
 
+// [앵커 수정] 깊이(nz)를 0.5(중앙) 혹은 0.4(등쪽)로 설정하여 초기 위치 보정
 const BODY_PART_ANCHOR: Partial<
   Record<BodyPartKey, { nx: number; ny: number; nz: number }>
 > = {
   brain: { nx: 0.5, ny: 0.9, nz: 0.55 },
-  // [수정 1] 어깨 앵커를 왼쪽(0.75)으로 이동
-  shoulder: { nx: 0.75, ny: 0.78, nz: 0.55 }, 
+  shoulder: { nx: 0.75, ny: 0.78, nz: 0.55 },
   heart: { nx: 0.5, ny: 0.73, nz: 0.55 },
-  aorta: { nx: 0.5, ny: 0.79, nz: 0.55 },
+  aorta: { nx: 0.5, ny: 0.79, nz: 0.45 }, // 등쪽
   lung: { nx: 0.5, ny: 0.74, nz: 0.55 },
-  trachea: { nx: 0.5, ny: 0.79, nz: 0.55 },
-  spine: { nx: 0.5, ny: 0.62, nz: 0.45 },
-  spinal_cord: { nx: 0.5, ny: 0.62, nz: 0.45 },
+  trachea: { nx: 0.5, ny: 0.79, nz: 0.5 },
+  spine: { nx: 0.5, ny: 0.62, nz: 0.4 },   // 등쪽
+  spinal_cord: { nx: 0.5, ny: 0.62, nz: 0.4 }, // 등쪽
   liver: { nx: 0.42, ny: 0.56, nz: 0.55 },
-  pancreas: { nx: 0.5, ny: 0.52, nz: 0.55 },
+  pancreas: { nx: 0.5, ny: 0.52, nz: 0.5 },
   stomach: { nx: 0.48, ny: 0.54, nz: 0.55 },
   intestine: { nx: 0.5, ny: 0.42, nz: 0.55 },
   knee: { nx: 0.6, ny: 0.2, nz: 0.55 },
@@ -237,7 +236,7 @@ const HumanModel = ({
         const mesh = child as Mesh;
         mesh.material = new MeshPhysicalMaterial({
           roughness: 0.1,        
-          transmission: 1.0,     // 투명 유리
+          transmission: 1.0,     
           thickness: 0.5,        
           ior: 1.5,              
           clearcoat: 1.0,        
@@ -320,9 +319,7 @@ const OrganModel = ({
     const offset = organKey.length; 
     
     if (isActive) {
-        // [수정 3] 회전 범위 축소 (0.5 -> 0.05) & 속도 조절
         groupRef.current.rotation.y += delta * 0.2;
-        // 약간의 부유 효과 추가
         groupRef.current.position.y += Math.sin(t * 1.5) * 0.0005; 
     } else {
         groupRef.current.rotation.y = Math.sin(t * 0.5 + offset) * 0.05;
@@ -336,7 +333,6 @@ const OrganModel = ({
         floatIntensity={isActive ? 0.1 : 0.05}
     >
       <group ref={groupRef}>
-        {/* [수정 3] Center로 회전축을 모델 중심으로 강제 정렬 */}
         <Center>
           <primitive object={clonedScene} />
         </Center>
@@ -414,7 +410,7 @@ const BODY_PART_RANGES: NormalizedRange[] = [
     organKey: "shoulder",
     min: { nx: 0.58, ny: 0.78, nz: 0.35 },
     max: { nx: 0.86, ny: 0.92, nz: 0.7 },
-    center: { nx: 0.75, ny: 0.78, nz: 0.55 }, // 앵커 왼쪽
+    center: { nx: 0.75, ny: 0.78, nz: 0.55 },
   },
   {
     storeKey: "lung",
@@ -644,11 +640,10 @@ const Stage3D = () => {
     }
     const centerWorld = getWorldPointFromNormalized(bounds, center);
     
-    // [수정 4] 장기 화면 정중앙 배치 (Offset 0)
-    const targetOrganPosition = centerWorld.clone();
-    
-    // 포커스 오프셋 적용
+    // [FIX 1: ReferenceError 해결] focusOffset을 사용 전에 정의
     const focusOffset = getFocusOffset(selectedBodyPart);
+
+    const targetOrganPosition = centerWorld.clone();
     targetOrganPosition.add(focusOffset);
 
     const camera = cameraRef.current;
@@ -676,7 +671,7 @@ const Stage3D = () => {
       const distanceMultiplier = CAMERA_DISTANCE_MULTIPLIER[selectedBodyPart] ?? 1;
       const targetPosition = centerWorld
         .clone()
-        .add(focusOffset)
+        .add(focusOffset) // [FIX 1] 정의된 focusOffset 사용
         .clone()
         .add(direction.multiplyScalar(FOCUS_DISTANCE * distanceMultiplier));
       const kneeOffset = getKneeCameraOffsetX(selectedBodyPart, BODY_PART_ANCHOR);
@@ -726,8 +721,9 @@ const Stage3D = () => {
     direction.normalize();
     const offsetMultiplier = ORGAN_CAMERA_OFFSET_MULTIPLIER[hit.organKey] ?? 1;
     
-    // [수정 4] 클릭 시에도 정중앙 배치
+    // [FIX 1] focusOffset 정의 (클릭 핸들러 내부에서도 필요)
     const focusOffset = getFocusOffset(hit.storeKey);
+
     const targetOrganPosition = centerWorld.clone().add(focusOffset);
     targetOrganPosition.add(
         direction.multiplyScalar(ORGAN_CAMERA_OFFSET * offsetMultiplier)
@@ -805,8 +801,10 @@ const Stage3D = () => {
               targetPositionRef={targetPositionRef}
               targetLookAtRef={targetLookAtRef}
             />
+            {/* [FIX 2] makeDefault 추가로 이벤트 바인딩 안정화 */}
             <OrbitControls
               ref={controlsRef}
+              makeDefault
               enablePan={false}
               enableDamping
               target={DEFAULT_CAMERA.lookAt}
