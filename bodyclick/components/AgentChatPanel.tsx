@@ -22,52 +22,96 @@ import {
   type ChatMessage,
 } from "../store/useBodyMapStore";
 
-const AGENT_RESPONSES: Record<AgentKey, string[]> = {
-  orthopedic: [
-    "통증이 생기는 움직임과 지속 시간을 먼저 확인해 주세요.",
-    "관절 가동 범위와 부종 여부가 중요한 지표입니다.",
-    "무리한 운동은 피하고 냉찜질로 통증을 완화하세요.",
-  ],
-  cardiology: [
-    "흉부 압박감이나 호흡 곤란이 있다면 즉시 평가가 필요합니다.",
-    "맥박 변동과 혈압 상태를 함께 확인해 주세요.",
-    "증상이 지속된다면 심전도와 혈액 검사가 도움이 됩니다.",
-  ],
-  vascular: [
-    "통증 부위의 맥박과 온도 차이를 살펴보세요.",
-    "갑작스러운 흉통이나 등 통증은 즉시 확인이 필요합니다.",
-    "혈압 변화와 동반 증상을 함께 기록해 주세요.",
-  ],
-  pulmonology: [
-    "기침 양상과 호흡 곤란 정도를 구체적으로 알려주세요.",
-    "열감이나 가래 변화가 있다면 함께 확인이 필요합니다.",
-    "흉부 통증이 동반된다면 빠른 평가가 권장됩니다.",
-  ],
-  gastroenterology: [
-    "통증이 나타나는 시간과 음식 섭취와의 관계를 확인해 주세요.",
-    "속쓰림, 메스꺼움 같은 증상이 동반되는지 중요합니다.",
-    "배변 변화가 있다면 함께 기록해 주세요.",
-  ],
-  neurology: [
-    "저림, 감각 이상, 근력 저하 여부를 먼저 확인하세요.",
-    "증상의 시작 시간과 진행 속도가 중요한 정보입니다.",
-    "두통이나 어지럼이 동반된다면 추가 평가가 필요합니다.",
-  ],
-  dermatology: [
-    "가려움 정도와 발진 형태를 자세히 알려주세요.",
-    "최근 사용한 제품이나 환경 변화가 있었는지 확인해 주세요.",
-    "상처 치유가 느리다면 전신 상태도 함께 살펴야 합니다.",
-  ],
-  general: [
-    "증상 위치와 지속 시간을 알려주세요.",
-    "최근 활동이나 생활 변화가 있었는지 확인해 주세요.",
-  ],
+type ConsultSpecialty =
+  | "cardio"
+  | "vascular"
+  | "ortho"
+  | "resp"
+  | "gi"
+  | "neuro"
+  | "derm";
+
+type CauseCategory =
+  | "infectious"
+  | "inflammatory"
+  | "structural"
+  | "vascular"
+  | "other";
+
+type ConsultResponse = {
+  emergency: boolean;
+  specialty: ConsultSpecialty | null;
+  specialist: {
+    possibleCauses: {
+      category: CauseCategory;
+      examples: string[];
+    }[];
+    whenToSeekCare: string[];
+    recommendedCare: string;
+    followUpQuestions: string[];
+    disclaimer: string;
+  } | null;
 };
 
-const buildMockResponse = (agentId: AgentKey, prompt: string) => {
-  const responses = AGENT_RESPONSES[agentId] ?? AGENT_RESPONSES.general;
-  const index = prompt.length % responses.length;
-  return responses[index];
+const SPECIALTY_LABELS: Record<ConsultSpecialty, string> = {
+  cardio: "심장내과",
+  vascular: "혈관외과",
+  ortho: "정형외과",
+  resp: "호흡기내과",
+  gi: "소화기내과",
+  neuro: "신경과",
+  derm: "피부과",
+};
+
+const CAUSE_CATEGORY_LABELS: Record<CauseCategory, string> = {
+  infectious: "감염성",
+  inflammatory: "염증성",
+  structural: "구조적",
+  vascular: "혈관성",
+  other: "기타",
+};
+
+const formatBulletList = (items: string[]) =>
+  items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- 내용 없음";
+
+const buildConsultMessage = (
+  agentLabel: string,
+  response: ConsultResponse,
+) => {
+  if (response.emergency) {
+    return [
+      "긴급 증상 가능성이 있어요. 지체하지 말고 119 또는 가까운 응급실로 연락하세요.",
+      "호흡곤란, 의식 저하, 심한 흉통, 갑작스러운 마비 등이 있다면 즉시 의료 도움을 받으세요.",
+    ].join("\n");
+  }
+
+  if (!response.specialty || !response.specialist) {
+    return "현재 증상을 분류하는 데 필요한 정보가 부족합니다. 증상, 기간, 강도, 동반 증상을 조금 더 알려주세요.";
+  }
+
+  const { specialist } = response;
+  const causeLines = specialist.possibleCauses.map(
+    (cause) =>
+      `- ${CAUSE_CATEGORY_LABELS[cause.category]}: ${cause.examples.join(", ")}`,
+  );
+
+  return [
+    `${agentLabel} 관점에서 참고 정보를 정리했어요.`,
+    "",
+    "가능한 원인(예시)",
+    causeLines.length ? causeLines.join("\n") : "- 내용 없음",
+    "",
+    "권장 대처",
+    `- ${specialist.recommendedCare}`,
+    "",
+    "진료가 필요한 경우",
+    formatBulletList(specialist.whenToSeekCare),
+    "",
+    "추가 질문",
+    formatBulletList(specialist.followUpQuestions),
+    "",
+    specialist.disclaimer,
+  ].join("\n");
 };
 
 const createMessage = (
@@ -108,12 +152,18 @@ const AgentChatPanel = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPromptDismissed, setIsPromptDismissed] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const pendingResponseRef = useRef<number | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setInput("");
+  }, [selectedBodyPart]);
+
+  useEffect(() => {
+    abortRef.current?.abort();
+    setIsSending(false);
   }, [selectedBodyPart]);
 
   useEffect(() => {
@@ -189,18 +239,16 @@ const AgentChatPanel = () => {
 
   useEffect(() => {
     return () => {
-      if (pendingResponseRef.current) {
-        window.clearTimeout(pendingResponseRef.current);
-      }
+      abortRef.current?.abort();
     };
   }, []);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     if (!selectedBodyPart || !agent || !isAuthenticated) {
       return;
     }
     const trimmed = input.trim();
-    if (!trimmed) {
+    if (!trimmed || isSending) {
       return;
     }
 
@@ -210,16 +258,53 @@ const AgentChatPanel = () => {
     );
     setInput("");
 
-    pendingResponseRef.current = window.setTimeout(() => {
-      const response = buildMockResponse(agent.id, trimmed);
+    setIsSending(true);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const response = await fetch("/api/consult", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = (await response.json()) as ConsultResponse;
+      const specialtyLabel = data.specialty
+        ? SPECIALTY_LABELS[data.specialty]
+        : agent.specialty;
+      const message = buildConsultMessage(
+        `${specialtyLabel} AI`,
+        data,
+      );
+
       addChatMessage(
         selectedBodyPart,
-        createMessage("assistant", response, agent.id),
+        createMessage("assistant", message, agent.id),
       );
-    }, 620);
-
-    // TODO: Gemini API 응답으로 대체하세요.
-  }, [addChatMessage, agent, input, isAuthenticated, selectedBodyPart]);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        addChatMessage(
+          selectedBodyPart,
+          createMessage(
+            "assistant",
+            "응답을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.",
+            agent.id,
+          ),
+        );
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsSending(false);
+      }
+    }
+  }, [addChatMessage, agent, input, isAuthenticated, isSending, selectedBodyPart]);
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -254,7 +339,7 @@ const AgentChatPanel = () => {
     });
   }, [resetSymptoms, selectedBodyPart]);
 
-  const isDisabled = !selectedBodyPart || !isAuthenticated || !agent;
+  const isDisabled = !selectedBodyPart || !isAuthenticated || !agent || isSending;
 
   if (!selectedBodyPart || !agent) {
     return (
@@ -483,7 +568,7 @@ const AgentChatPanel = () => {
               disabled={isDisabled}
               className="min-w-[72px] rounded-xl bg-bm-accent px-3 py-2 text-center text-xs font-semibold leading-none text-black transition hover:bg-bm-accent-strong disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
             >
-              보내기
+              {isSending ? "답변 생성 중" : "보내기"}
             </button>
           </div>
         </div>

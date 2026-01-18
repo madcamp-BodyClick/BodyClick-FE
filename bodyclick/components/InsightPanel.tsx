@@ -114,6 +114,15 @@ const BODY_PART_INSIGHTS: Record<BodyPartKey, BodyPartInsight> = {
     signals: ["피로감", "우상복부 불편감", "황달"],
     conditions: ["지방간", "간염", "간경화"],
   },
+  pancreas: {
+    role: [
+      "소화 효소를 분비해 탄수화물·지방·단백질 분해를 돕습니다.",
+      "인슐린과 글루카곤으로 혈당을 조절합니다.",
+      "십이지장으로 소화액을 보내 위산을 중화합니다.",
+    ],
+    signals: ["상복부 통증(등으로 방사)", "소화불량 또는 기름진 변", "혈당 변동"],
+    conditions: ["급성 췌장염", "만성 췌장염", "췌장암"],
+  },
   intestine: {
     role: [
       "영양분과 수분을 흡수합니다.",
