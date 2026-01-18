@@ -31,9 +31,10 @@ import {
 } from "../store/useBodyMapStore";
 
 const MODEL_URL = "/models/human.glb";
+const BRAIN_MODEL_VERSION = "2024-11-09";
 const ORGAN_MODELS = {
   aorta: "/models/aorta.glb",
-  brain: "/models/brain.glb",
+  brain: `/models/brain.glb?v=${BRAIN_MODEL_VERSION}`,
   bronchus: "/models/bronchus.glb",
   heart: "/models/heart.glb",
   shoulder: "/models/shoulder.glb",
