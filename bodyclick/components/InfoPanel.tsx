@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Bookmark } from "lucide-react";
+import { Bookmark, MapPin, X } from "lucide-react";
 import AgentChatPanel from "./AgentChatPanel";
 import { useAuthStore } from "../store/useAuthStore";
 import { useBookmarkStore } from "../store/useBookmarkStore";
@@ -190,6 +191,11 @@ const InfoPanel = () => {
   const toggleBodyPart = useBookmarkStore((state) => state.toggleBodyPart);
   const toggleHospital = useBookmarkStore((state) => state.toggleHospital);
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(
+    null,
+  );
 
   const part = selectedBodyPart ? BODY_PART_LOOKUP[selectedBodyPart] : null;
   const insight = selectedBodyPart
@@ -207,12 +213,51 @@ const InfoPanel = () => {
       .filter((hospital) => hospital.systems.includes(part.system))
       .slice(0, 3);
   }, [hospitalCatalog, part]);
+  const selectedHospital = useMemo(() => {
+    if (!selectedHospitalId) {
+      return null;
+    }
+    return (
+      hospitalCatalog.find((hospital) => hospital.id === selectedHospitalId) ??
+      null
+    );
+  }, [hospitalCatalog, selectedHospitalId]);
 
   useEffect(() => {
     if (!isAuthenticated && activeTab === "ai") {
       setActiveTab("overview");
     }
   }, [activeTab, isAuthenticated, setActiveTab]);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMapOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMapOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMapOpen]);
+
+  useEffect(() => {
+    if (!isMounted) {
+      return;
+    }
+    const originalOverflow = document.body.style.overflow;
+    if (isMapOpen) {
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isMapOpen, isMounted]);
 
   const handleTabClick = (tabId: InsightTab) => {
     if (tabId === "ai" && !isAuthenticated) {
@@ -234,15 +279,138 @@ const InfoPanel = () => {
   };
 
   const isOpen = Boolean(selectedSystem && selectedBodyPart);
+  const mapModalContent =
+    isMapOpen && selectedHospital ? (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={() => {
+            setIsMapOpen(false);
+            setSelectedHospitalId(null);
+          }}
+        />
+        <div className="relative z-10 flex h-[84vh] w-[92vw] max-w-[1100px] flex-col overflow-hidden rounded-[32px] border border-bm-border bg-bm-panel shadow-[0_25px_80px_rgba(0,0,0,0.55)] animate-[fade-up_0.25s_ease-out]">
+          <div className="relative px-6 py-5">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
+            <div className="relative flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-bm-muted">
+                  병원 위치
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-bm-text">
+                  {selectedHospital.name}
+                </h3>
+                <p className="mt-2 text-xs text-bm-muted">
+                  지도 API 연결 예정 · 데모 위치
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMapOpen(false);
+                  setSelectedHospitalId(null);
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-bm-muted transition hover:text-bm-text"
+                aria-label="모달 닫기"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 px-6 pb-6">
+            <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
+              <section className="relative min-h-[260px] overflow-hidden rounded-2xl border border-bm-border bg-bm-panel-soft">
+                <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_20%_0%,rgba(99,199,219,0.18)_0%,transparent_70%)]" />
+                <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(transparent_31px,rgba(255,255,255,0.06)_32px),linear-gradient(90deg,transparent_31px,rgba(255,255,255,0.06)_32px)] [background-size:32px_32px]" />
+                <div className="relative flex h-full flex-col justify-between p-5">
+                  <div className="flex items-center gap-2 text-xs text-bm-muted">
+                    <span className="h-2 w-2 rounded-full bg-bm-accent/70" />
+                    지도 영역
+                  </div>
+                  <div className="rounded-xl border border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
+                    {selectedHospital.address}
+                  </div>
+                </div>
+              </section>
+
+              <aside className="flex min-h-0 flex-col overflow-hidden">
+                <div className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-bm-text">
+                        {selectedHospital.specialty}
+                      </p>
+                      <p className="mt-1 text-[11px] text-bm-muted">
+                        {selectedHospital.distanceKm}km · 평점 {selectedHospital.rating}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isAuthenticated) {
+                          router.push("/login");
+                          return;
+                        }
+                        toggleHospital(selectedHospital.id);
+                      }}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel transition ${
+                        favoriteHospitals.some(
+                          (item) => item.id === selectedHospital.id,
+                        )
+                          ? "text-bm-accent"
+                          : "text-bm-muted hover:text-bm-text"
+                      }`}
+                      aria-label="병원 북마크"
+                    >
+                      <Bookmark
+                        className={`h-4 w-4 ${
+                          favoriteHospitals.some(
+                            (item) => item.id === selectedHospital.id,
+                          )
+                            ? "fill-bm-accent"
+                            : ""
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-[11px] text-bm-muted">
+                    <MapPin className="h-3.5 w-3.5" />
+                    <span>{selectedHospital.address}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedHospital.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full border border-bm-border bg-bm-panel px-2 py-0.5 text-[10px] text-bm-muted"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-4 rounded-2xl border border-dashed border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
+                  경로 안내 및 예약 기능은 지도 API 연결 후 제공됩니다.
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null;
 
   return (
-    <aside
-      className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-[28px] border border-bm-border bg-bm-panel px-6 py-6 transition duration-500 lg:static lg:z-10 lg:h-full lg:w-[340px] lg:rounded-[28px] lg:border lg:px-6 lg:py-6 ${
-        isOpen
-          ? "translate-y-0 opacity-100"
-          : "translate-y-full opacity-0 pointer-events-none lg:translate-y-0 lg:opacity-100 lg:pointer-events-auto"
-      }`}
-    >
+    <>
+      <aside
+        className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-[28px] border border-bm-border bg-bm-panel px-6 py-6 transition duration-500 lg:static lg:z-10 lg:h-full lg:w-[340px] lg:rounded-[28px] lg:border lg:px-6 lg:py-6 ${
+          isOpen
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0 pointer-events-none lg:translate-y-0 lg:opacity-100 lg:pointer-events-auto"
+        }`}
+      >
       <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-bm-border lg:hidden" />
 
       {!part || !insight ? (
@@ -366,7 +534,20 @@ const InfoPanel = () => {
                     return (
                       <div
                         key={hospital.id}
-                        className="flex items-start justify-between gap-3 rounded-2xl border border-bm-border bg-bm-panel px-3 py-3"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          setSelectedHospitalId(hospital.id);
+                          setIsMapOpen(true);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedHospitalId(hospital.id);
+                            setIsMapOpen(true);
+                          }
+                        }}
+                        className="flex w-full items-start justify-between gap-3 rounded-2xl border border-bm-border bg-bm-panel px-3 py-3 text-left transition hover:border-bm-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-bm-accent"
                       >
                         <div>
                           <p className="text-sm font-semibold text-bm-text">
@@ -378,7 +559,8 @@ const InfoPanel = () => {
                         </div>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             if (!isAuthenticated) {
                               router.push("/login");
                               return;
@@ -428,7 +610,11 @@ const InfoPanel = () => {
           {activeTab === "ai" ? <AgentChatPanel /> : null}
         </div>
       )}
-    </aside>
+      </aside>
+      {isMounted && mapModalContent
+        ? createPortal(mapModalContent, document.body)
+        : null}
+    </>
   );
 };
 

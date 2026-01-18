@@ -110,6 +110,7 @@ const AgentChatPanel = () => {
   const [isMounted, setIsMounted] = useState(false);
   const pendingResponseRef = useRef<number | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setInput("");
@@ -244,6 +245,13 @@ const AgentChatPanel = () => {
     }
     resetSymptoms(selectedBodyPart);
     setIsPromptDismissed(false);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      composerRef.current?.focus();
+    });
   }, [resetSymptoms, selectedBodyPart]);
 
   const isDisabled = !selectedBodyPart || !isAuthenticated || !agent;
@@ -457,6 +465,7 @@ const AgentChatPanel = () => {
           </label>
           <textarea
             id="agent-chat-input"
+            ref={composerRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
