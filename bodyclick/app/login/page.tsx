@@ -3,15 +3,22 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useAuthStore } from "../../store/useAuthStore";
+import BirthDatePicker from "../../components/BirthDatePicker";
+import GenderSelect from "../../components/GenderSelect";
 
 const LoginPage = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [isGoogleReady, setIsGoogleReady] = useState(false);
+  const [gender, setGender] = useState("");
+  const [birthdate, setBirthdate] = useState("");
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const login = useAuthStore((state) => state.login);
+  const updateProfile = useAuthStore((state) => state.updateProfile);
   const router = useRouter();
+  const googleAccount = {
+    name: "바디클릭 사용자",
+    email: "bodyclick.user@gmail.com",
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -19,12 +26,22 @@ const LoginPage = () => {
     }
   }, [isAuthenticated, router]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleExistingLogin = () => {
+    login(googleAccount.email);
+    router.push("/explore");
+  };
+
+  const handleProfileSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!email.trim()) {
+    if (!gender || !birthdate) {
       return;
     }
-    login(email.trim());
+    login(googleAccount.email);
+    updateProfile({
+      name: googleAccount.name,
+      gender,
+      birthdate,
+    });
     router.push("/explore");
   };
 
@@ -54,51 +71,71 @@ const LoginPage = () => {
             바디클릭 로그인
           </p>
           <h1 className="mt-3 text-2xl font-semibold text-bm-text">
-            의료 AI 상담을 시작하세요
+            Google 계정으로 빠르게 시작하세요
           </h1>
           <p className="mt-2 text-sm text-bm-muted">
-            선택한 부위에 맞춘 전문 AI 상담을 이용할 수 있습니다.
+            구글 로그인을 통해 안전하게 상담 기록을 관리합니다.
           </p>
 
-          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
-                이메일
-              </label>
-              <input
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                type="email"
-                className="h-11 w-full rounded-xl border border-bm-border bg-bm-surface-soft px-3 text-sm text-bm-text placeholder:text-bm-muted focus:border-bm-accent focus:outline-none"
-                placeholder="이메일 주소"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
-                비밀번호
-              </label>
-              <input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                className="h-11 w-full rounded-xl border border-bm-border bg-bm-surface-soft px-3 text-sm text-bm-text placeholder:text-bm-muted focus:border-bm-accent focus:outline-none"
-                placeholder="8자리 이상"
-              />
-            </div>
+          <div className="mt-6 space-y-3">
             <button
-              type="submit"
-              className="mt-2 w-full rounded-xl bg-bm-accent px-4 py-3 text-sm font-semibold text-black transition hover:bg-bm-accent-strong"
+              type="button"
+              onClick={() => setIsGoogleReady(true)}
+              className="flex w-full items-center justify-center gap-3 rounded-xl border border-bm-border bg-bm-panel-soft px-4 py-3 text-sm font-semibold text-bm-text transition hover:bg-bm-panel"
             >
-              로그인
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-bold text-black">
+                G
+              </span>
+              Google로 계속하기
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={handleExistingLogin}
+              className="w-full rounded-xl border border-bm-border bg-bm-panel-soft px-4 py-3 text-sm text-bm-muted transition hover:text-bm-text"
+            >
+              기존 회원이면 바로 시작
+            </button>
+          </div>
 
-          <div className="mt-5 flex items-center justify-between text-xs text-bm-muted">
-            <span>계정이 없으신가요?</span>
-            <Link className="font-semibold text-bm-text hover:text-bm-accent" href="/signup">
-              회원가입
-            </Link>
+          <div className="mt-6 rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
+              신규 회원 안내
+            </p>
+            <p className="mt-2 text-sm text-bm-text">
+              구글 로그인 후 성별과 생년월일을 입력해 주세요.
+            </p>
+
+            {isGoogleReady ? (
+              <form className="mt-4 space-y-4" onSubmit={handleProfileSubmit}>
+                <div className="rounded-xl border border-bm-border bg-bm-panel p-3 text-xs text-bm-muted">
+                  <div className="flex items-center justify-between">
+                    <span className="uppercase tracking-[0.2em]">Google 계정</span>
+                    <span className="text-bm-text">{googleAccount.name}</span>
+                  </div>
+                  <p className="mt-1 text-bm-text">{googleAccount.email}</p>
+                </div>
+                <GenderSelect
+                  label="성별"
+                  value={gender}
+                  onChange={setGender}
+                />
+                <BirthDatePicker
+                  label="생년월일"
+                  value={birthdate}
+                  onChange={setBirthdate}
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded-xl bg-bm-accent px-4 py-3 text-sm font-semibold text-black transition hover:bg-bm-accent-strong"
+                >
+                  정보 저장 후 시작
+                </button>
+              </form>
+            ) : (
+              <p className="mt-3 text-xs text-bm-muted">
+                구글 로그인 버튼을 눌러 정보를 입력할 수 있어요.
+              </p>
+            )}
           </div>
 
           <p className="mt-4 text-[11px] text-bm-muted">

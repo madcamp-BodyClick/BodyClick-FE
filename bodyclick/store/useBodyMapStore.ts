@@ -223,6 +223,8 @@ type BodyMapState = {
   activeTab: InsightTab;
   chatThreads: Partial<Record<BodyPartKey, ChatMessage[]>>;
   confirmedSymptoms: Partial<Record<BodyPartKey, boolean>>;
+  recentBodyParts: BodyPartKey[];
+  bodyPartSelections: Partial<Record<BodyPartKey, number>>;
   setSystem: (system: SystemKey) => void;
   setBodyPart: (part: BodyPartKey | null) => void;
   setActiveTab: (tab: InsightTab) => void;
@@ -237,6 +239,8 @@ export const useBodyMapStore = create<BodyMapState>((set) => ({
   activeTab: "overview",
   chatThreads: {},
   confirmedSymptoms: {},
+  recentBodyParts: [],
+  bodyPartSelections: {},
   setSystem: (system) =>
     set((state) => {
       if (state.selectedSystem === system) {
@@ -244,7 +248,26 @@ export const useBodyMapStore = create<BodyMapState>((set) => ({
       }
       return { selectedSystem: system, selectedBodyPart: null, activeTab: "overview" };
     }),
-  setBodyPart: (part) => set({ selectedBodyPart: part, activeTab: "overview" }),
+  setBodyPart: (part) =>
+    set((state) => {
+      if (!part) {
+        return { selectedBodyPart: part, activeTab: "overview" };
+      }
+      const nextRecent = [
+        part,
+        ...state.recentBodyParts.filter((item) => item !== part),
+      ].slice(0, 12);
+      const nextSelections = {
+        ...state.bodyPartSelections,
+        [part]: (state.bodyPartSelections[part] ?? 0) + 1,
+      };
+      return {
+        selectedBodyPart: part,
+        activeTab: "overview",
+        recentBodyParts: nextRecent,
+        bodyPartSelections: nextSelections,
+      };
+    }),
   setActiveTab: (tab) => set({ activeTab: tab }),
   addChatMessage: (part, message) =>
     set((state) => ({

@@ -22,6 +22,10 @@ const ExplorePage = () => {
   const { isAuthenticated, user, logout, updateProfile } = useAuthStore();
   const setSystem = useBodyMapStore((state) => state.setSystem);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
+  const recentBodyParts = useBodyMapStore((state) => state.recentBodyParts);
+  const bodyPartSelections = useBodyMapStore(
+    (state) => state.bodyPartSelections,
+  );
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -35,6 +39,7 @@ const ExplorePage = () => {
   });
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchSort, setSearchSort] = useState<"recent" | "popular">("recent");
 
   const profileInitial = useMemo(() => {
     const name = user?.name?.trim();
@@ -113,15 +118,54 @@ const ExplorePage = () => {
   }, []);
   const filteredParts = useMemo(() => {
     const query = searchQuery.trim();
-    if (!query) {
-      return allParts;
-    }
-    return allParts.filter(
+    const candidates = allParts.filter(
       (part) =>
         part.label.includes(query) ||
         part.id.toLowerCase().includes(query.toLowerCase()),
     );
-  }, [allParts, searchQuery]);
+    if (searchSort === "popular") {
+      return [...candidates].sort((a, b) => {
+        const aCount = bodyPartSelections[a.id] ?? 0;
+        const bCount = bodyPartSelections[b.id] ?? 0;
+        if (aCount === bCount) {
+          return a.label.localeCompare(b.label);
+        }
+        return bCount - aCount;
+      });
+    }
+    const recentIndex = new Map(
+      recentBodyParts.map((partId, index) => [partId, index]),
+    );
+    return [...candidates].sort((a, b) => {
+      const aIndex = recentIndex.get(a.id) ?? Number.POSITIVE_INFINITY;
+      const bIndex = recentIndex.get(b.id) ?? Number.POSITIVE_INFINITY;
+      if (aIndex === bIndex) {
+        return a.label.localeCompare(b.label);
+      }
+      return aIndex - bIndex;
+    });
+  }, [allParts, bodyPartSelections, recentBodyParts, searchQuery, searchSort]);
+  const recommendedParts = useMemo(() => {
+    if (searchSort === "popular") {
+      return [...allParts]
+        .sort((a, b) => {
+          const aCount = bodyPartSelections[a.id] ?? 0;
+          const bCount = bodyPartSelections[b.id] ?? 0;
+          if (aCount === bCount) {
+            return a.label.localeCompare(b.label);
+          }
+          return bCount - aCount;
+        })
+        .slice(0, 8);
+    }
+    const recent = recentBodyParts
+      .map((partId) => allParts.find((part) => part.id === partId))
+      .filter(Boolean) as typeof allParts;
+    if (recent.length > 0) {
+      return recent.slice(0, 8);
+    }
+    return allParts.slice(0, 8);
+  }, [allParts, bodyPartSelections, recentBodyParts, searchSort]);
   const handleSelectPart = (partId: BodyPartKey) => {
     const part = BODY_PART_LOOKUP[partId];
     if (!part) {
@@ -338,11 +382,37 @@ const ExplorePage = () => {
                       />
                     </div>
                     <div className="mt-3 space-y-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-bm-muted">
-                        추천 검색어
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-bm-muted">
+                          추천 검색어
+                        </p>
+                        <div className="flex items-center gap-1 rounded-full border border-bm-border bg-bm-panel-soft p-0.5 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setSearchSort("recent")}
+                            className={`rounded-full px-2 py-1 transition ${
+                              searchSort === "recent"
+                                ? "bg-bm-accent-soft text-bm-text"
+                                : "text-bm-muted hover:text-bm-text"
+                            }`}
+                          >
+                            최신순
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSearchSort("popular")}
+                            className={`rounded-full px-2 py-1 transition ${
+                              searchSort === "popular"
+                                ? "bg-bm-accent-soft text-bm-text"
+                                : "text-bm-muted hover:text-bm-text"
+                            }`}
+                          >
+                            인기순
+                          </button>
+                        </div>
+                      </div>
                       <div className="flex flex-wrap gap-2">
-                        {allParts.slice(0, 8).map((part) => (
+                        {recommendedParts.map((part) => (
                           <button
                             key={part.id}
                             type="button"

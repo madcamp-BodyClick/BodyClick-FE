@@ -17,7 +17,7 @@ type GenderSelectProps = {
   portal?: boolean;
 };
 
-const OPTIONS = ["남", "여", "기타", "미지정"];
+const OPTIONS = ["남", "여"];
 
 const GenderSelect = ({
   label,
