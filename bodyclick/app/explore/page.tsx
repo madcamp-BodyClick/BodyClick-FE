@@ -2,25 +2,39 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Bookmark } from "lucide-react";
+import { Bookmark, Search } from "lucide-react";
 import InfoPanel from "../../components/InfoPanel";
 import Stage3D from "../../components/Stage3D";
 import SystemLayerSelector from "../../components/SystemLayerSelector";
 import { useAuthStore } from "../../store/useAuthStore";
 import BirthDatePicker from "../../components/BirthDatePicker";
 import GenderSelect from "../../components/GenderSelect";
+import {
+  BODY_PART_LOOKUP,
+  BODY_PARTS,
+  SYSTEM_LABELS,
+  useBodyMapStore,
+  type BodyPartKey,
+  type SystemKey,
+} from "../../store/useBodyMapStore";
 
 const ExplorePage = () => {
   const { isAuthenticated, user, logout, updateProfile } = useAuthStore();
+  const setSystem = useBodyMapStore((state) => state.setSystem);
+  const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const searchPanelRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [profileDraft, setProfileDraft] = useState({
     name: "",
     email: "",
     gender: "",
     birthdate: "",
   });
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const profileInitial = useMemo(() => {
     const name = user?.name?.trim();
@@ -43,21 +57,81 @@ const ExplorePage = () => {
   }, [user]);
 
   useEffect(() => {
-    if (!isProfileOpen) {
-      return;
-    }
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node | null;
-      if (profileMenuRef.current && target) {
-        if (!profileMenuRef.current.contains(target)) {
-          setIsProfileOpen(false);
-          setIsEditingProfile(false);
-        }
+      if (!target) {
+        return;
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
+        setIsProfileOpen(false);
+        setIsEditingProfile(false);
+      }
+      if (searchPanelRef.current && !searchPanelRef.current.contains(target)) {
+        setIsSearchOpen(false);
+        setSearchQuery("");
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isProfileOpen]);
+  }, []);
+
+  useEffect(() => {
+    if (!isSearchOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsSearchOpen(false);
+        setSearchQuery("");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSearchOpen]);
+
+  useEffect(() => {
+    if (!isSearchOpen) {
+      return;
+    }
+    const raf = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [isSearchOpen]);
+
+  const allParts = useMemo(() => {
+    return Object.values(BODY_PARTS)
+      .flat()
+      .map((part) => ({
+        ...part,
+        system: BODY_PART_LOOKUP[part.id]?.system,
+      }))
+      .filter(
+        (part): part is { id: BodyPartKey; label: string; system: SystemKey } =>
+          Boolean(part.system),
+      );
+  }, []);
+  const filteredParts = useMemo(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      return allParts;
+    }
+    return allParts.filter(
+      (part) =>
+        part.label.includes(query) ||
+        part.id.toLowerCase().includes(query.toLowerCase()),
+    );
+  }, [allParts, searchQuery]);
+  const handleSelectPart = (partId: BodyPartKey) => {
+    const part = BODY_PART_LOOKUP[partId];
+    if (!part) {
+      return;
+    }
+    setSystem(part.system);
+    setBodyPart(partId);
+    setIsSearchOpen(false);
+    setSearchQuery("");
+  };
 
   return (
     <main className="min-h-screen bg-bm-bg text-bm-text">
@@ -79,20 +153,21 @@ const ExplorePage = () => {
               <p className="hidden text-xs text-bm-muted lg:block">
                 의료 인사이트 인터페이스
               </p>
-              {isAuthenticated ? (
-                <div className="flex items-center gap-2">
-                  <div className="relative" ref={profileMenuRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsProfileOpen((prev) => !prev)}
-                      aria-haspopup="menu"
-                      aria-expanded={isProfileOpen}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-xs font-semibold text-bm-text transition hover:text-bm-accent"
-                    >
-                      {profileInitial}
-                    </button>
-                    {isProfileOpen ? (
-                      <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-bm-border bg-bm-panel px-4 py-3 text-xs text-bm-text shadow-lg">
+              <div className="relative flex items-center gap-2" ref={searchPanelRef}>
+                {isAuthenticated ? (
+                  <div className="flex items-center gap-2">
+                    <div className="relative" ref={profileMenuRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsProfileOpen((prev) => !prev)}
+                        aria-haspopup="menu"
+                        aria-expanded={isProfileOpen}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-xs font-semibold text-bm-text transition hover:text-bm-accent"
+                      >
+                        {profileInitial}
+                      </button>
+                      {isProfileOpen ? (
+                        <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-bm-border bg-bm-panel px-4 py-3 text-xs text-bm-text shadow-lg">
                         <div className="flex items-center justify-between">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bm-muted">
                             내 프로필
@@ -224,24 +299,92 @@ const ExplorePage = () => {
                           로그아웃
                         </button>
                       </div>
-                    ) : null}
+                      ) : null}
+                    </div>
+                    <Link
+                      href="/bookmarks"
+                      aria-label="북마크"
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-bm-muted transition hover:text-bm-accent"
+                    >
+                      <Bookmark className="h-4 w-4" />
+                    </Link>
                   </div>
+                ) : (
                   <Link
-                    href="/bookmarks"
-                    aria-label="북마크"
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-bm-muted transition hover:text-bm-accent"
+                    href="/login"
+                    className="rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
                   >
-                    <Bookmark className="h-4 w-4" />
+                    로그인
                   </Link>
-                </div>
-              ) : (
-                <Link
-                  href="/login"
-                  className="rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsSearchOpen((prev) => !prev)}
+                  aria-expanded={isSearchOpen}
+                  aria-label="부위 검색"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-bm-muted transition hover:text-bm-accent"
                 >
-                  로그인
-                </Link>
-              )}
+                  <Search className="h-4 w-4" />
+                </button>
+                {isSearchOpen ? (
+                  <div className="absolute right-0 top-full z-30 mt-3 w-[min(360px,90vw)] rounded-2xl border border-bm-border bg-bm-panel p-4 text-xs text-bm-text shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                    <div className="rounded-xl border border-bm-border bg-bm-panel-soft px-3 py-2">
+                      <input
+                        ref={searchInputRef}
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder="부위를 검색하세요"
+                        className="w-full bg-transparent text-sm text-bm-text placeholder:text-bm-muted focus:outline-none"
+                      />
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-bm-muted">
+                        추천 검색어
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {allParts.slice(0, 8).map((part) => (
+                          <button
+                            key={part.id}
+                            type="button"
+                            onClick={() => handleSelectPart(part.id)}
+                            className="rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
+                          >
+                            {part.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
+                      {filteredParts.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
+                          검색 결과가 없습니다.
+                        </div>
+                      ) : (
+                        filteredParts.map((part) => (
+                          <button
+                            key={part.id}
+                            type="button"
+                            onClick={() => handleSelectPart(part.id)}
+                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-bm-border bg-bm-panel-soft px-3 py-2 text-left transition hover:border-bm-border-strong"
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-bm-text">
+                                {part.label}
+                              </p>
+                              <p className="text-[11px] text-bm-muted">
+                                {SYSTEM_LABELS[part.system]}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-bm-border bg-bm-panel px-2 py-1 text-[10px] text-bm-muted">
+                              이동
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </header>
 
