@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  SYSTEMS,
-  SYSTEM_LABELS,
   getSystemLayerOpacity,
   useBodyMapStore,
 } from "../store/useBodyMapStore";
@@ -10,6 +8,8 @@ import {
 const SystemLayerSelector = () => {
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const setSystem = useBodyMapStore((state) => state.setSystem);
+  const systems = useBodyMapStore((state) => state.systems);
+  const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
 
   return (
     <section className="flex flex-col gap-4">
@@ -18,11 +18,11 @@ const SystemLayerSelector = () => {
           계통 레이어
         </p>
         <p className="mt-2 text-sm text-bm-muted">
-          {selectedSystem ? SYSTEM_LABELS[selectedSystem] : "전신"}
+          {selectedSystem ? getSystemLabel(selectedSystem) : "전신"}
         </p>
       </div>
       <div className="flex gap-2 lg:flex-col">
-        {SYSTEMS.map((system, index) => {
+        {systems.map((system, index) => {
           const isActive = selectedSystem === system.id;
           const layerOpacity = getSystemLayerOpacity(selectedSystem, system.id);
           return (

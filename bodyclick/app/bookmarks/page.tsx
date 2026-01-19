@@ -4,30 +4,83 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bookmark, MapPin, Stethoscope } from "lucide-react";
 import { useAuthStore } from "../../store/useAuthStore";
-import { useBookmarkStore } from "../../store/useBookmarkStore";
+import {
+  useBookmarkStore,
+  type HospitalPlaceInput,
+} from "../../store/useBookmarkStore";
 import {
   BODY_PART_LOOKUP,
-  SYSTEM_LABELS,
-  type BodyPartKey,
+  useBodyMapStore,
+  type SystemKey,
 } from "../../store/useBodyMapStore";
 
 type UndoItem =
-  | { type: "part"; id: BodyPartKey; label: string }
-  | { type: "hospital"; id: string; label: string };
+  | {
+      type: "part";
+      bodyPartId: number;
+      label: string;
+    }
+  | {
+      type: "hospital";
+      place: HospitalPlaceInput;
+      label: string;
+    };
 
 const BookmarksPage = () => {
   const { isAuthenticated, user } = useAuthStore();
-  const { favoriteBodyParts, favoriteHospitals } = useBookmarkStore();
-  const toggleBodyPart = useBookmarkStore((state) => state.toggleBodyPart);
-  const toggleHospital = useBookmarkStore((state) => state.toggleHospital);
+  const { bodyPartBookmarks, hospitalBookmarks } = useBookmarkStore();
+  const refreshBodyPartBookmarks = useBookmarkStore(
+    (state) => state.refreshBodyPartBookmarks,
+  );
+  const refreshHospitalBookmarks = useBookmarkStore(
+    (state) => state.refreshHospitalBookmarks,
+  );
+  const removeBodyPartBookmark = useBookmarkStore(
+    (state) => state.removeBodyPartBookmark,
+  );
+  const removeHospitalBookmark = useBookmarkStore(
+    (state) => state.removeHospitalBookmark,
+  );
+  const addBodyPartBookmark = useBookmarkStore(
+    (state) => state.addBodyPartBookmark,
+  );
+  const addHospitalBookmark = useBookmarkStore(
+    (state) => state.addHospitalBookmark,
+  );
+  const systemCodeById = useBodyMapStore((state) => state.systemCodeById);
+  const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
+  const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
+  const getBodyPartCodeByLabel = useBodyMapStore(
+    (state) => state.getBodyPartCodeByLabel,
+  );
   const [undoItem, setUndoItem] = useState<UndoItem | null>(null);
   const [undoTimer, setUndoTimer] = useState<ReturnType<
     typeof setTimeout
   > | null>(null);
 
-  const favoritePartCards = favoriteBodyParts
-    .map((partId) => BODY_PART_LOOKUP[partId])
-    .filter(Boolean);
+  const favoritePartCards = bodyPartBookmarks
+    .map((bookmark) => {
+      const code =
+        bookmark.code ?? getBodyPartCodeByLabel(bookmark.nameKo) ?? null;
+      const systemCode =
+        (code ? BODY_PART_LOOKUP[code]?.system : null) ??
+        systemCodeById[bookmark.systemId];
+      if (!systemCode) {
+        return null;
+      }
+      return {
+        bookmarkId: bookmark.bookmarkId,
+        bodyPartId: bookmark.bodyPartId,
+        label: code ? getBodyPartLabel(code) : bookmark.nameKo,
+        system: systemCode,
+      };
+    })
+    .filter(Boolean) as Array<{
+    bookmarkId: number;
+    bodyPartId: number;
+    label: string;
+    system: SystemKey;
+  }>;
 
   useEffect(() => {
     return () => {
@@ -36,6 +89,14 @@ const BookmarksPage = () => {
       }
     };
   }, [undoTimer]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    refreshBodyPartBookmarks();
+    refreshHospitalBookmarks();
+  }, [isAuthenticated, refreshBodyPartBookmarks, refreshHospitalBookmarks]);
 
   const openUndo = (item: UndoItem) => {
     if (undoTimer) {
@@ -116,7 +177,7 @@ const BookmarksPage = () => {
               </Link>
               <div className="inline-flex items-center gap-2 rounded-full border border-bm-border bg-bm-panel-soft px-4 py-2 text-xs text-bm-muted">
                 <Bookmark className="h-3.5 w-3.5" />
-                저장됨 {favoriteBodyParts.length + favoriteHospitals.length}
+                저장됨 {bodyPartBookmarks.length + hospitalBookmarks.length}
               </div>
             </div>
           </header>
@@ -167,7 +228,7 @@ const BookmarksPage = () => {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-[10px] uppercase tracking-[0.28em] text-bm-muted">
-                            {SYSTEM_LABELS[part.system]}
+                            {getSystemLabel(part.system)}
                           </p>
                           <p className="mt-2 text-base font-semibold text-bm-text">
                             {part.label}
@@ -176,10 +237,10 @@ const BookmarksPage = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            toggleBodyPart(part.id);
+                            removeBodyPartBookmark(part.bookmarkId);
                             openUndo({
                               type: "part",
-                              id: part.id,
+                              bodyPartId: part.bodyPartId,
                               label: part.label,
                             });
                           }}
@@ -205,7 +266,7 @@ const BookmarksPage = () => {
                     즐겨찾기 병원
                   </p>
                   <p className="mt-2 text-lg font-semibold text-bm-text">
-                    {favoriteHospitals.length}곳
+                    {hospitalBookmarks.length}곳
                   </p>
                 </div>
                 <div className="flex h-11 w-11 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-bm-accent">
@@ -214,7 +275,7 @@ const BookmarksPage = () => {
               </div>
 
               <div className="mt-5 max-h-[420px] space-y-3 overflow-y-auto pr-3 [scrollbar-gutter:stable]">
-                {favoriteHospitals.length === 0 ? (
+                {hospitalBookmarks.length === 0 ? (
                   <div className="flex min-h-[124px] flex-col gap-3 rounded-2xl border border-dashed border-bm-border bg-bm-panel-soft p-4 text-sm text-bm-muted sm:col-span-2">
                     <div className="flex items-start gap-3">
                       <span className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full border border-bm-border bg-bm-panel text-bm-accent">
@@ -235,9 +296,9 @@ const BookmarksPage = () => {
                     </div>
                   </div>
                 ) : (
-                  favoriteHospitals.map((hospital) => (
+                  hospitalBookmarks.map((hospital) => (
                     <div
-                      key={hospital.id}
+                      key={hospital.bookmarkId}
                       className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -246,20 +307,21 @@ const BookmarksPage = () => {
                             {hospital.name}
                           </p>
                           <p className="mt-1 text-[11px] text-bm-muted">
-                            {hospital.specialty} · {hospital.distanceKm}km
+                            {hospital.address ?? "주소 정보 없음"}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className="rounded-full border border-bm-border bg-bm-panel px-2 py-1 text-[10px] text-bm-muted">
-                            평점 {hospital.rating}
-                          </div>
                           <button
                             type="button"
                             onClick={() => {
-                              toggleHospital(hospital.id);
+                              removeHospitalBookmark(hospital.bookmarkId);
                               openUndo({
                                 type: "hospital",
-                                id: hospital.id,
+                                place: {
+                                  place_id: hospital.placeId,
+                                  name: hospital.name,
+                                  address: hospital.address,
+                                },
                                 label: hospital.name,
                               });
                             }}
@@ -271,18 +333,8 @@ const BookmarksPage = () => {
                         </div>
                       </div>
                       <p className="mt-2 text-[11px] text-bm-muted">
-                        {hospital.address}
+                        장소 ID: {hospital.placeId}
                       </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {hospital.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="rounded-full border border-bm-border bg-bm-panel px-2 py-0.5 text-[10px] text-bm-muted"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
                     </div>
                   ))
                 )}
@@ -300,15 +352,9 @@ const BookmarksPage = () => {
             type="button"
             onClick={() => {
               if (undoItem.type === "part") {
-                if (!favoriteBodyParts.includes(undoItem.id)) {
-                  toggleBodyPart(undoItem.id);
-                }
-              } else if (
-                !favoriteHospitals.some(
-                  (hospital) => hospital.id === undoItem.id,
-                )
-              ) {
-                toggleHospital(undoItem.id);
+                addBodyPartBookmark(undoItem.bodyPartId);
+              } else {
+                addHospitalBookmark(undoItem.place);
               }
               setUndoItem(null);
             }}

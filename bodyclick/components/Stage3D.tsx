@@ -32,7 +32,6 @@ import {
   BODY_PART_LOOKUP,
   BODY_PARTS,
   DEFAULT_CAMERA,
-  SYSTEM_LABELS,
   type BodyPartKey,
   useBodyMapStore,
 } from "../store/useBodyMapStore";
@@ -58,19 +57,19 @@ const ORGAN_MODELS = {
 type OrganKey = keyof typeof ORGAN_MODELS;
 
 const ORGAN_SYSTEM_MAP: Record<OrganKey, string> = {
-  heart: "circulatory",
-  aorta: "circulatory",
-  brain: "nervous",
-  spinal: "nervous",
-  lung: "respiratory",
-  bronchus: "respiratory",
-  stomach: "digestive",
-  liver: "digestive",
-  pancreas: "digestive",
-  intestine: "digestive",
-  shoulder: "skeletal",
-  vertebra: "skeletal",
-  knee: "skeletal",
+  heart: "CARDIO",
+  aorta: "CARDIO",
+  brain: "NERVOUS",
+  spinal: "NERVOUS",
+  lung: "RESP",
+  bronchus: "RESP",
+  stomach: "DIGEST",
+  liver: "DIGEST",
+  pancreas: "DIGEST",
+  intestine: "DIGEST",
+  shoulder: "MUSCULO",
+  vertebra: "MUSCULO",
+  knee: "MUSCULO",
 };
 
 const FOCUS_DISTANCE = 2.8;
@@ -558,6 +557,8 @@ const Stage3D = () => {
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
   const setSystem = useBodyMapStore((state) => state.setSystem);
+  const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
+  const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
 
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const cameraRef = useRef<Camera | null>(null);
@@ -752,9 +753,9 @@ const Stage3D = () => {
 
   const parts = selectedSystem ? BODY_PARTS[selectedSystem] : [];
   const selectedPartLabel = selectedBodyPart
-    ? BODY_PART_LOOKUP[selectedBodyPart]?.label
+    ? getBodyPartLabel(selectedBodyPart)
     : null;
-  const systemLabel = selectedSystem ? SYSTEM_LABELS[selectedSystem] : "전신";
+  const systemLabel = selectedSystem ? getSystemLabel(selectedSystem) : "전신";
   const barWidth = parts.length <= 1 ? 180 : parts.length <= 3 ? 300 : 480;
 
   return (
@@ -883,7 +884,7 @@ const Stage3D = () => {
                     : "text-bm-muted hover:text-bm-text"
                 } ${dimmed ? "opacity-50" : "opacity-100"}`}
               >
-                {part.label}
+                {getBodyPartLabel(part.id)}
               </button>
             );
           })}

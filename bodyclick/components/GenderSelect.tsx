@@ -17,7 +17,10 @@ type GenderSelectProps = {
   portal?: boolean;
 };
 
-const OPTIONS = ["남", "여"];
+const OPTIONS = [
+  { value: "MALE", label: "남" },
+  { value: "FEMALE", label: "여" },
+];
 
 const GenderSelect = ({
   label,
@@ -27,7 +30,8 @@ const GenderSelect = ({
   portal = true,
 }: GenderSelectProps) => {
   const [open, setOpen] = useState(false);
-  const displayValue = value || "선택";
+  const selectedOption = OPTIONS.find((option) => option.value === value);
+  const displayValue = selectedOption?.label ?? "선택";
   const isCompact = size === "compact";
 
   return (
@@ -65,19 +69,19 @@ const GenderSelect = ({
           <div className="space-y-1">
             {OPTIONS.map((option) => (
               <button
-                key={option}
+                key={option.value}
                 type="button"
                 onClick={() => {
-                  onChange(option);
+                  onChange(option.value);
                   setOpen(false);
                 }}
                 className={cn(
                   "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-bm-text/80 transition hover:bg-bm-accent-faint hover:text-bm-text",
-                  value === option && "bg-bm-accent text-black",
+                  value === option.value && "bg-bm-accent text-black",
                 )}
               >
-                <span>{option}</span>
-                {value === option ? (
+                <span>{option.label}</span>
+                {value === option.value ? (
                   <span className="text-xs">✓</span>
                 ) : null}
               </button>

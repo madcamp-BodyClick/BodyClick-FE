@@ -1,26 +1,36 @@
 "use client";
 
 import { useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { fetchCurrentUser } from "../lib/api";
 import { useAuthStore } from "../store/useAuthStore";
+import { useBodyMapStore } from "../store/useBodyMapStore";
 
 const AuthSessionSync = () => {
-  const { data, status } = useSession();
-  const syncFromSession = useAuthStore((state) => state.syncFromSession);
-  const logout = useAuthStore((state) => state.logout);
+  const setUserFromApi = useAuthStore((state) => state.setUserFromApi);
+  const clearUser = useAuthStore((state) => state.clearUser);
+  const loadSystems = useBodyMapStore((state) => state.loadSystems);
 
   useEffect(() => {
-    if (status === "authenticated" && data?.user?.email) {
-      syncFromSession({
-        email: data.user.email,
-        name: data.user.name ?? undefined,
-      });
-      return;
-    }
-    if (status === "unauthenticated") {
-      logout();
-    }
-  }, [data?.user?.email, data?.user?.name, logout, status, syncFromSession]);
+    let isActive = true;
+    const bootstrap = async () => {
+      await loadSystems();
+      const response = await fetchCurrentUser();
+      if (!isActive) {
+        return;
+      }
+      if (response.ok && response.data?.success) {
+        setUserFromApi(response.data.data);
+        return;
+      }
+      if (response.status === 401) {
+        clearUser();
+      }
+    };
+    bootstrap();
+    return () => {
+      isActive = false;
+    };
+  }, [clearUser, loadSystems, setUserFromApi]);
 
   return null;
 };

@@ -1,4 +1,12 @@
 import { create } from "zustand";
+import {
+  fetchBodyPartDetail,
+  fetchBodyPartDiseases,
+  fetchBodySystems,
+  fetchSearchResults,
+  type BodyPartDetail,
+  type DiseaseSummary,
+} from "../lib/api";
 
 export type SystemKey =
   | "MUSCULO"
@@ -27,6 +35,7 @@ export type BodyPartKey =
 export type BodySystem = {
   id: SystemKey;
   label: string;
+  backendId?: number;
 };
 
 export type BodyPart = {
@@ -172,6 +181,24 @@ export const BODY_PART_LOOKUP = Object.entries(BODY_PARTS).reduce(
   {} as Record<BodyPartKey, BodyPart & { system: SystemKey }>,
 );
 
+const BODY_PART_LABEL_TO_CODE = Object.values(BODY_PART_LOOKUP).reduce(
+  (acc, part) => {
+    acc[part.label] = part.id;
+    return acc;
+  },
+  {} as Record<string, BodyPartKey>,
+);
+
+const getBodyPartLabelValue = (
+  code: BodyPartKey,
+  labels: Partial<Record<BodyPartKey, string>>,
+) => labels[code] ?? BODY_PART_LOOKUP[code]?.label ?? code;
+
+const getSystemLabelValue = (
+  code: SystemKey,
+  labels: Partial<Record<SystemKey, string>>,
+) => labels[code] ?? SYSTEM_LABELS[code] ?? code;
+
 const INACTIVE_LAYER_OPACITY = 0.2;
 export const DEFAULT_CAMERA: CameraPreset = {
   position: [0, 0.55, 4.6],
@@ -218,6 +245,24 @@ export const getBodyPartOpacity = (
 };
 
 type BodyMapState = {
+  systems: BodySystem[];
+  systemLabels: Partial<Record<SystemKey, string>>;
+  systemIdByCode: Partial<Record<SystemKey, number>>;
+  systemCodeById: Record<number, SystemKey>;
+  bodyPartLabels: Partial<Record<BodyPartKey, string>>;
+  bodyPartIdByCode: Partial<Record<BodyPartKey, number>>;
+  bodyPartCodeById: Record<number, BodyPartKey>;
+  bodyPartDetailsById: Record<number, BodyPartDetail>;
+  bodyPartDiseasesById: Record<number, DiseaseSummary[]>;
+  loadSystems: () => Promise<void>;
+  setBodyPartId: (code: BodyPartKey, id: number) => void;
+  setBodyPartLabel: (code: BodyPartKey, label: string) => void;
+  resolveBodyPartId: (code: BodyPartKey) => Promise<number | null>;
+  loadBodyPartDetail: (code: BodyPartKey) => Promise<BodyPartDetail | null>;
+  loadBodyPartDiseases: (code: BodyPartKey) => Promise<DiseaseSummary[]>;
+  getSystemLabel: (code: SystemKey) => string;
+  getBodyPartLabel: (code: BodyPartKey) => string;
+  getBodyPartCodeByLabel: (label: string) => BodyPartKey | null;
   selectedSystem: SystemKey | null;
   selectedBodyPart: BodyPartKey | null;
   activeTab: InsightTab;
@@ -233,7 +278,150 @@ type BodyMapState = {
   resetSymptoms: (part: BodyPartKey) => void;
 };
 
-export const useBodyMapStore = create<BodyMapState>((set) => ({
+export const useBodyMapStore = create<BodyMapState>((set, get) => ({
+  systems: SYSTEMS,
+  systemLabels: {},
+  systemIdByCode: {},
+  systemCodeById: {},
+  bodyPartLabels: {},
+  bodyPartIdByCode: {},
+  bodyPartCodeById: {},
+  bodyPartDetailsById: {},
+  bodyPartDiseasesById: {},
+  loadSystems: async () => {
+    const response = await fetchBodySystems();
+    if (!response.ok || !response.data?.success) {
+      return;
+    }
+    const apiSystems = response.data.data;
+    const systemMap = new Map(apiSystems.map((item) => [item.code, item]));
+    const updatedSystems = SYSTEMS.map((system) => {
+      const match = systemMap.get(system.id);
+      return {
+        ...system,
+        label: match?.nameKo ?? system.label,
+        backendId: match?.id,
+      };
+    });
+    const extraSystems = apiSystems
+      .filter((item) => !SYSTEMS.some((system) => system.id === item.code))
+      .map((item) => ({
+        id: item.code as SystemKey,
+        label: item.nameKo,
+        backendId: item.id,
+      }));
+
+    const systemLabels = apiSystems.reduce(
+      (acc, item) => {
+        acc[item.code as SystemKey] = item.nameKo;
+        return acc;
+      },
+      {} as Partial<Record<SystemKey, string>>,
+    );
+
+    const systemIdByCode = apiSystems.reduce(
+      (acc, item) => {
+        acc[item.code as SystemKey] = item.id;
+        return acc;
+      },
+      {} as Partial<Record<SystemKey, number>>,
+    );
+
+    const systemCodeById = apiSystems.reduce(
+      (acc, item) => {
+        acc[item.id] = item.code as SystemKey;
+        return acc;
+      },
+      {} as Record<number, SystemKey>,
+    );
+
+    set({
+      systems: [...updatedSystems, ...extraSystems],
+      systemLabels,
+      systemIdByCode,
+      systemCodeById,
+    });
+  },
+  setBodyPartId: (code, id) =>
+    set((state) => ({
+      bodyPartIdByCode: { ...state.bodyPartIdByCode, [code]: id },
+      bodyPartCodeById: { ...state.bodyPartCodeById, [id]: code },
+    })),
+  setBodyPartLabel: (code, label) =>
+    set((state) => ({
+      bodyPartLabels: { ...state.bodyPartLabels, [code]: label },
+    })),
+  resolveBodyPartId: async (code) => {
+    const cached = get().bodyPartIdByCode[code];
+    if (cached) {
+      return cached;
+    }
+    const label = getBodyPartLabelValue(code, get().bodyPartLabels);
+    const response = await fetchSearchResults(label);
+    if (!response.ok || !response.data?.success) {
+      return null;
+    }
+    const match =
+      response.data.data.find((item) => item.name === label) ??
+      response.data.data[0];
+    if (!match) {
+      return null;
+    }
+    set((state) => ({
+      bodyPartIdByCode: { ...state.bodyPartIdByCode, [code]: match.id },
+      bodyPartCodeById: { ...state.bodyPartCodeById, [match.id]: code },
+      bodyPartLabels: { ...state.bodyPartLabels, [code]: match.name },
+    }));
+    return match.id;
+  },
+  loadBodyPartDetail: async (code) => {
+    const id = await get().resolveBodyPartId(code);
+    if (!id) {
+      return null;
+    }
+    const cached = get().bodyPartDetailsById[id];
+    if (cached) {
+      return cached;
+    }
+    const response = await fetchBodyPartDetail(id);
+    if (!response.ok || !response.data?.success) {
+      return null;
+    }
+    const detail = response.data.data;
+    set((state) => ({
+      bodyPartDetailsById: { ...state.bodyPartDetailsById, [id]: detail },
+      bodyPartLabels: {
+        ...state.bodyPartLabels,
+        [code]: detail.nameKo ?? state.bodyPartLabels[code],
+      },
+    }));
+    return detail;
+  },
+  loadBodyPartDiseases: async (code) => {
+    const id = await get().resolveBodyPartId(code);
+    if (!id) {
+      return [];
+    }
+    const cached = get().bodyPartDiseasesById[id];
+    if (cached) {
+      return cached;
+    }
+    const response = await fetchBodyPartDiseases(id);
+    if (!response.ok || !response.data?.success) {
+      return [];
+    }
+    const diseases = response.data.data;
+    set((state) => ({
+      bodyPartDiseasesById: {
+        ...state.bodyPartDiseasesById,
+        [id]: diseases,
+      },
+    }));
+    return diseases;
+  },
+  getSystemLabel: (code) => getSystemLabelValue(code, get().systemLabels),
+  getBodyPartLabel: (code) => getBodyPartLabelValue(code, get().bodyPartLabels),
+  getBodyPartCodeByLabel: (label) => BODY_PART_LABEL_TO_CODE[label] ?? null,
   selectedSystem: null,
   selectedBodyPart: null,
   activeTab: "overview",

@@ -5,184 +5,37 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Bookmark, MapPin, X } from "lucide-react";
 import AgentChatPanel from "./AgentChatPanel";
+import {
+  fetchPlaces,
+  type BodyPartDetail,
+  type DiseaseSummary,
+  type PlaceResult,
+} from "../lib/api";
+import { getUserLocation } from "../lib/location";
 import { useAuthStore } from "../store/useAuthStore";
 import { useBookmarkStore } from "../store/useBookmarkStore";
 import {
   BODY_PART_LOOKUP,
   INSIGHT_TABS,
-  SYSTEM_LABELS,
   getAgentProfileForPart,
   useBodyMapStore,
-  type BodyPartKey,
   type InsightTab,
 } from "../store/useBodyMapStore";
 
-type BodyPartInsight = {
-  summary: string;
-  role: string[];
-  signals: string[];
-  conditions: string[];
+const normalizeStringList = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string") as string[];
+  }
+  return [];
 };
 
-const JOINT_INSIGHT: BodyPartInsight = {
-  summary: "관절 안정성과 체중 분산을 담당하는 핵심 구조입니다.",
-  role: [
-    "보행 충격을 흡수하고 체중을 분산합니다.",
-    "관절 연골과 인대가 안정성을 유지합니다.",
-    "회전과 굴곡 움직임을 정밀하게 제어합니다.",
-  ],
-  signals: [
-    "계단 오르내릴 때 통증",
-    "붓기나 열감",
-    "움직임 제한 또는 잠김",
-  ],
-  conditions: ["퇴행성 관절염", "반월상 연골 손상", "십자인대 손상"],
-};
-
-const LUNG_INSIGHT: BodyPartInsight = {
-  summary: "호흡 효율과 산소 교환을 책임지는 핵심 장기입니다.",
-  role: [
-    "폐포에서 산소와 이산화탄소를 교환합니다.",
-    "기관지 네트워크가 공기 흐름을 조절합니다.",
-    "호흡근과 협력해 환기를 유지합니다.",
-  ],
-  signals: ["기침이나 호흡 곤란", "가슴 답답함", "운동 시 숨참"],
-  conditions: ["폐렴", "만성폐쇄성폐질환", "천식"],
-};
-
-const BODY_PART_INSIGHTS: Record<BodyPartKey, BodyPartInsight> = {
-  knee: JOINT_INSIGHT,
-  shoulder: {
-    summary: "상지의 가동 범위와 안정성을 결정하는 복합 관절입니다.",
-    role: [
-      "상완골과 견갑골의 회전이 넓은 가동 범위를 만듭니다.",
-      "회전근개가 관절을 안정화합니다.",
-      "팔의 힘 전달과 움직임을 돕습니다.",
-    ],
-    signals: ["팔을 올릴 때 통증", "야간 통증", "힘 약화"],
-    conditions: ["회전근개 파열", "오십견", "충돌 증후군"],
-  },
-  elbow_left: {
-    summary: "팔의 힘 전달과 손 위치 조절을 담당하는 관절입니다.",
-    role: [
-      "굴곡과 신전으로 손 위치를 조절합니다.",
-      "상완골-척골 관절이 안정성을 제공합니다.",
-      "주요 신경과 혈관이 관절 주변을 지나갑니다.",
-    ],
-    signals: ["팔꿈치 바깥쪽 통증", "저림", "잡는 힘 저하"],
-    conditions: ["테니스 엘보", "골프 엘보", "척골 신경 포착"],
-  },
-  spine: {
-    summary: "몸통 지지와 신경 보호를 동시에 담당하는 중심 축입니다.",
-    role: [
-      "몸통을 지지하고 자세를 유지합니다.",
-      "척수를 보호하고 신경 전달 통로를 제공합니다.",
-      "굽힘·회전 등 복합 움직임을 담당합니다.",
-    ],
-    signals: ["오래 앉을 때 통증", "방사통", "자세 불균형"],
-    conditions: ["추간판 탈출증", "척추관 협착증", "근막통 증후군"],
-  },
-  heart: {
-    summary: "전신 혈액 순환을 유지하는 생명 유지 장기입니다.",
-    role: [
-      "혈액을 펌핑해 전신에 산소를 공급합니다.",
-      "박동 리듬이 혈류를 안정화합니다.",
-      "관상동맥이 심근에 혈류를 제공합니다.",
-    ],
-    signals: ["흉부 압박감", "호흡 곤란", "두근거림"],
-    conditions: ["협심증", "부정맥", "심부전"],
-  },
-  aorta: {
-    summary: "심장에서 나온 혈액을 전신으로 전달하는 대혈관입니다.",
-    role: [
-      "심장에서 나온 혈액을 전신으로 분배합니다.",
-      "탄성벽이 혈압 변화를 완충합니다.",
-      "주요 장기로 가지를 분기합니다.",
-    ],
-    signals: ["맥박 차이", "흉통 또는 등 통증", "혈압 변화"],
-    conditions: ["대동맥류", "대동맥 박리", "동맥경화"],
-  },
-  lung: LUNG_INSIGHT,
-  trachea: {
-    summary: "폐로 이어지는 공기 통로를 안정적으로 유지합니다.",
-    role: [
-      "공기가 폐로 들어가는 통로를 유지합니다.",
-      "점막과 섬모가 이물질을 걸러냅니다.",
-      "연골 고리가 기도 형태를 지탱합니다.",
-    ],
-    signals: ["거친 기침", "목소리 변화", "쌕쌕거림"],
-    conditions: ["기관지염", "기도 협착", "급성 염증"],
-  },
-  stomach: {
-    summary: "음식 분해와 소화 시작을 담당하는 장기입니다.",
-    role: [
-      "음식을 저장하고 위산으로 분해를 시작합니다.",
-      "소화 효소로 단백질 분해를 돕습니다.",
-      "십이지장으로 내용물을 전달합니다.",
-    ],
-    signals: ["상복부 통증", "속쓰림", "메스꺼움"],
-    conditions: ["위염", "위궤양", "기능성 소화불량"],
-  },
-  liver: {
-    summary: "대사와 해독을 담당하는 핵심 기관입니다.",
-    role: [
-      "해독과 대사를 담당합니다.",
-      "담즙을 생성해 지방 소화를 돕습니다.",
-      "영양분을 저장합니다.",
-    ],
-    signals: ["피로감", "우상복부 불편감", "황달"],
-    conditions: ["지방간", "간염", "간경화"],
-  },
-  pancreas: {
-    summary: "혈당 조절과 소화 효소 분비를 담당하는 장기입니다.",
-    role: [
-      "소화 효소를 분비해 탄수화물·지방·단백질 분해를 돕습니다.",
-      "인슐린과 글루카곤으로 혈당을 조절합니다.",
-      "십이지장으로 소화액을 보내 위산을 중화합니다.",
-    ],
-    signals: ["상복부 통증(등으로 방사)", "소화불량 또는 기름진 변", "혈당 변동"],
-    conditions: ["급성 췌장염", "만성 췌장염", "췌장암"],
-  },
-  intestine: {
-    summary: "영양분과 수분 흡수를 담당하는 기관입니다.",
-    role: [
-      "영양분과 수분을 흡수합니다.",
-      "장내 미생물이 면역과 대사에 관여합니다.",
-      "연동운동으로 내용물을 이동합니다.",
-    ],
-    signals: ["복부 팽만", "배변 변화", "복통"],
-    conditions: ["과민성 대장 증후군", "염증성 장질환", "장염"],
-  },
-  brain: {
-    summary: "인지와 감각을 통합하는 신경계의 중심입니다.",
-    role: [
-      "인지, 감각, 운동을 통합합니다.",
-      "자율신경을 조절합니다.",
-      "기억과 감정을 처리합니다.",
-    ],
-    signals: ["두통", "집중력 저하", "운동·감각 이상"],
-    conditions: ["뇌졸중", "편두통", "치매"],
-  },
-  spinal_cord: {
-    summary: "뇌와 말초 신경을 연결하는 핵심 통로입니다.",
-    role: [
-      "뇌와 말초를 연결하는 신경 고속도로입니다.",
-      "반사 반응을 조절합니다.",
-      "운동·감각 신호를 전달합니다.",
-    ],
-    signals: ["사지 저림", "근력 저하", "균형 문제"],
-    conditions: ["척수 압박", "척수염", "신경근병증"],
-  },
-  skin: {
-    summary: "외부 자극으로부터 신체를 보호하는 방어선입니다.",
-    role: [
-      "외부 자극으로부터 신체를 보호합니다.",
-      "체온 조절과 수분 유지에 관여합니다.",
-      "감각 수용체가 분포합니다.",
-    ],
-    signals: ["지속적인 가려움", "발진 또는 색 변화", "상처 치유 지연"],
-    conditions: ["아토피 피부염", "건선", "접촉성 피부염"],
-  },
+const SYSTEM_KEYWORDS: Record<string, string> = {
+  MUSCULO: "정형외과",
+  CARDIO: "심장내과",
+  RESP: "호흡기내과",
+  DIGEST: "소화기내과",
+  NERVOUS: "신경과",
+  DERM: "피부과",
 };
 
 const InfoPanel = () => {
@@ -190,54 +43,148 @@ const InfoPanel = () => {
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
   const activeTab = useBodyMapStore((state) => state.activeTab);
   const setActiveTab = useBodyMapStore((state) => state.setActiveTab);
+  const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
+  const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
+  const loadBodyPartDetail = useBodyMapStore((state) => state.loadBodyPartDetail);
+  const loadBodyPartDiseases = useBodyMapStore(
+    (state) => state.loadBodyPartDiseases,
+  );
+  const resolveBodyPartId = useBodyMapStore((state) => state.resolveBodyPartId);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const favoriteBodyParts = useBookmarkStore(
-    (state) => state.favoriteBodyParts,
+  const bodyPartBookmarks = useBookmarkStore((state) => state.bodyPartBookmarks);
+  const hospitalBookmarks = useBookmarkStore((state) => state.hospitalBookmarks);
+  const refreshBodyPartBookmarks = useBookmarkStore(
+    (state) => state.refreshBodyPartBookmarks,
   );
-  const favoriteHospitals = useBookmarkStore(
-    (state) => state.favoriteHospitals,
+  const refreshHospitalBookmarks = useBookmarkStore(
+    (state) => state.refreshHospitalBookmarks,
   );
-  const hospitalCatalog = useBookmarkStore((state) => state.hospitalCatalog);
-  const toggleBodyPart = useBookmarkStore((state) => state.toggleBodyPart);
-  const toggleHospital = useBookmarkStore((state) => state.toggleHospital);
+  const addBodyPartBookmark = useBookmarkStore(
+    (state) => state.addBodyPartBookmark,
+  );
+  const removeBodyPartBookmark = useBookmarkStore(
+    (state) => state.removeBodyPartBookmark,
+  );
+  const addHospitalBookmark = useBookmarkStore(
+    (state) => state.addHospitalBookmark,
+  );
+  const removeHospitalBookmark = useBookmarkStore(
+    (state) => state.removeHospitalBookmark,
+  );
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(
     null,
   );
+  const [detail, setDetail] = useState<BodyPartDetail | null>(null);
+  const [diseases, setDiseases] = useState<DiseaseSummary[]>([]);
+  const [nearbyHospitals, setNearbyHospitals] = useState<PlaceResult[]>([]);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
 
   const part = selectedBodyPart ? BODY_PART_LOOKUP[selectedBodyPart] : null;
-  const insight = selectedBodyPart
-    ? BODY_PART_INSIGHTS[selectedBodyPart]
-    : null;
   const agent = getAgentProfileForPart(selectedBodyPart);
-  const isPartBookmarked = selectedBodyPart
-    ? favoriteBodyParts.includes(selectedBodyPart)
-    : false;
-  const recommendedHospitals = useMemo(() => {
-    if (!part) {
-      return [];
+  const partLabel = selectedBodyPart ? getBodyPartLabel(selectedBodyPart) : null;
+  const systemLabel = part ? getSystemLabel(part.system) : null;
+  const isPartBookmarked = useMemo(() => {
+    if (!detail?.id) {
+      return false;
     }
-    return hospitalCatalog
-      .filter((hospital) => hospital.systems.includes(part.system))
-      .slice(0, 3);
-  }, [hospitalCatalog, part]);
+    return bodyPartBookmarks.some((item) => item.bodyPartId === detail.id);
+  }, [bodyPartBookmarks, detail?.id]);
+  const recommendedHospitals = useMemo(() => {
+    return nearbyHospitals.slice(0, 3);
+  }, [nearbyHospitals]);
   const selectedHospital = useMemo(() => {
     if (!selectedHospitalId) {
       return null;
     }
     return (
-      hospitalCatalog.find((hospital) => hospital.id === selectedHospitalId) ??
-      null
+      nearbyHospitals.find(
+        (hospital) => hospital.place_id === selectedHospitalId,
+      ) ?? null
     );
-  }, [hospitalCatalog, selectedHospitalId]);
+  }, [nearbyHospitals, selectedHospitalId]);
+  const roleItems = normalizeStringList(detail?.keyRoles);
+  const signalItems = normalizeStringList(detail?.observationPoints);
+  const conditionItems = diseases.map((item) => item.name);
+  const summaryText = isLoadingDetail
+    ? "정보를 불러오는 중입니다."
+    : detail?.description ?? "설명 정보가 없습니다.";
 
   useEffect(() => {
     if (!isAuthenticated && activeTab === "ai") {
       setActiveTab("overview");
     }
   }, [activeTab, isAuthenticated, setActiveTab]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    refreshBodyPartBookmarks();
+    refreshHospitalBookmarks();
+  }, [isAuthenticated, refreshBodyPartBookmarks, refreshHospitalBookmarks]);
+
+  useEffect(() => {
+    if (!selectedBodyPart) {
+      setDetail(null);
+      setDiseases([]);
+      setIsLoadingDetail(false);
+      return;
+    }
+    let isActive = true;
+    const loadDetail = async () => {
+      setIsLoadingDetail(true);
+      const [detailData, diseaseData] = await Promise.all([
+        loadBodyPartDetail(selectedBodyPart),
+        loadBodyPartDiseases(selectedBodyPart),
+      ]);
+      if (!isActive) {
+        return;
+      }
+      setDetail(detailData);
+      setDiseases(diseaseData ?? []);
+      setIsLoadingDetail(false);
+    };
+    loadDetail();
+    return () => {
+      isActive = false;
+    };
+  }, [loadBodyPartDetail, loadBodyPartDiseases, selectedBodyPart]);
+
+  useEffect(() => {
+    if (!part || !isAuthenticated) {
+      setNearbyHospitals([]);
+      setIsLoadingHospitals(false);
+      return;
+    }
+    let isActive = true;
+    const loadPlaces = async () => {
+      setIsLoadingHospitals(true);
+      const location = await getUserLocation();
+      const keyword = SYSTEM_KEYWORDS[part.system] ?? "병원";
+      const response = await fetchPlaces({
+        lat: location.lat,
+        lng: location.lng,
+        keyword,
+      });
+      if (!isActive) {
+        return;
+      }
+      if (response.ok && response.data?.success) {
+        setNearbyHospitals(response.data.data);
+      } else {
+        setNearbyHospitals([]);
+      }
+      setIsLoadingHospitals(false);
+    };
+    loadPlaces();
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, part]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -277,7 +224,7 @@ const InfoPanel = () => {
     setActiveTab(tabId);
   };
 
-  const handleTogglePartBookmark = () => {
+  const handleTogglePartBookmark = async () => {
     if (!selectedBodyPart) {
       return;
     }
@@ -285,7 +232,34 @@ const InfoPanel = () => {
       router.push("/login");
       return;
     }
-    toggleBodyPart(selectedBodyPart);
+    const bodyPartId =
+      detail?.id ?? (await resolveBodyPartId(selectedBodyPart));
+    if (!bodyPartId) {
+      return;
+    }
+    const existing = bodyPartBookmarks.find(
+      (item) => item.bodyPartId === bodyPartId,
+    );
+    if (existing) {
+      await removeBodyPartBookmark(existing.bookmarkId);
+      return;
+    }
+    await addBodyPartBookmark(bodyPartId);
+  };
+
+  const handleToggleHospitalBookmark = async (hospital: PlaceResult) => {
+    if (!isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+    const existing = hospitalBookmarks.find(
+      (item) => item.placeId === hospital.place_id,
+    );
+    if (existing) {
+      await removeHospitalBookmark(existing.bookmarkId);
+      return;
+    }
+    await addHospitalBookmark(hospital);
   };
 
   const isOpen = Boolean(selectedSystem && selectedBodyPart);
@@ -315,7 +289,7 @@ const InfoPanel = () => {
                   {selectedHospital.name}
                 </h3>
                 <p className="mt-2 text-xs text-bm-muted">
-                  지도 API 연결 예정 · 데모 위치
+                  현재 위치 기반 추천 결과입니다.
                 </p>
               </div>
               <button
@@ -342,7 +316,9 @@ const InfoPanel = () => {
                     지도 영역
                   </div>
                   <div className="rounded-xl border border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
-                    {selectedHospital.address}
+                    {selectedHospital.road_address ||
+                      selectedHospital.address ||
+                      "주소 정보 없음"}
                   </div>
                 </div>
               </section>
@@ -352,24 +328,21 @@ const InfoPanel = () => {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-bm-text">
-                        {selectedHospital.specialty}
+                        {systemLabel ?? "의료기관"}
                       </p>
                       <p className="mt-1 text-[11px] text-bm-muted">
-                        {selectedHospital.distanceKm}km · 평점 {selectedHospital.rating}
+                        {selectedHospital.phone_number
+                          ? `전화 ${selectedHospital.phone_number}`
+                          : "전화번호 정보 없음"}
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!isAuthenticated) {
-                          router.push("/login");
-                          return;
-                        }
-                        toggleHospital(selectedHospital.id);
-                      }}
+                      onClick={() => handleToggleHospitalBookmark(selectedHospital)}
                       className={`flex h-9 w-9 items-center justify-center rounded-full border border-bm-border bg-bm-panel transition ${
-                        favoriteHospitals.some(
-                          (item) => item.id === selectedHospital.id,
+                        hospitalBookmarks.some(
+                          (item) =>
+                            item.placeId === selectedHospital.place_id,
                         )
                           ? "text-bm-accent"
                           : "text-bm-muted hover:text-bm-text"
@@ -378,8 +351,9 @@ const InfoPanel = () => {
                     >
                       <Bookmark
                         className={`h-4 w-4 ${
-                          favoriteHospitals.some(
-                            (item) => item.id === selectedHospital.id,
+                          hospitalBookmarks.some(
+                            (item) =>
+                              item.placeId === selectedHospital.place_id,
                           )
                             ? "fill-bm-accent"
                             : ""
@@ -389,18 +363,22 @@ const InfoPanel = () => {
                   </div>
                   <div className="mt-3 flex items-center gap-2 text-[11px] text-bm-muted">
                     <MapPin className="h-3.5 w-3.5" />
-                    <span>{selectedHospital.address}</span>
+                    <span>
+                      {selectedHospital.road_address ||
+                        selectedHospital.address ||
+                        "주소 정보 없음"}
+                    </span>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedHospital.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full border border-bm-border bg-bm-panel px-2 py-0.5 text-[10px] text-bm-muted"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+                  {selectedHospital.place_url ? (
+                    <a
+                      href={selectedHospital.place_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-2 rounded-full border border-bm-border bg-bm-panel px-2 py-1 text-[10px] text-bm-muted transition hover:text-bm-text"
+                    >
+                      상세 보기
+                    </a>
+                  ) : null}
                 </div>
                 <div className="mt-4 rounded-2xl border border-dashed border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
                   경로 안내 및 예약 기능은 지도 API 연결 후 제공됩니다.
@@ -423,7 +401,7 @@ const InfoPanel = () => {
       >
       <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-bm-border lg:hidden" />
 
-      {!part || !insight ? (
+      {!part ? (
         <div className="flex flex-col gap-4">
           <div className="rounded-2xl border border-bm-border bg-bm-panel-soft p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
@@ -446,10 +424,10 @@ const InfoPanel = () => {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-semibold text-bm-text">
-                  {part.label}
+                  {partLabel ?? ""}
                 </h2>
                 <p className="mt-1 text-sm text-bm-muted">
-                  {SYSTEM_LABELS[part.system]}
+                  {systemLabel ?? "전신"}
                 </p>
               </div>
               <button
@@ -476,7 +454,7 @@ const InfoPanel = () => {
                 {agent.label}
               </div>
             ) : null}
-            <p className="text-sm text-bm-text">{insight.summary}</p>
+            <p className="text-sm text-bm-text">{summaryText}</p>
           </header>
 
           <div className="flex flex-wrap gap-2">
@@ -506,12 +484,16 @@ const InfoPanel = () => {
                   핵심 역할
                 </p>
                 <ul className="mt-3 space-y-2 text-sm text-bm-text">
-                  {insight.role.map((item) => (
-                    <li key={item} className="flex items-start gap-2">
-                      <span className="mt-2 h-1 w-1 rounded-full bg-bm-accent" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
+                  {roleItems.length > 0 ? (
+                    roleItems.map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <span className="mt-2 h-1 w-1 rounded-full bg-bm-accent" />
+                        <span>{item}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-sm text-bm-muted">정보가 없습니다.</li>
+                  )}
                 </ul>
               </section>
               <section className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
@@ -519,12 +501,16 @@ const InfoPanel = () => {
                   관찰 포인트
                 </p>
                 <ul className="mt-3 space-y-2 text-sm text-bm-text">
-                  {insight.signals.map((item) => (
-                    <li key={item} className="flex items-start gap-2">
-                      <span className="mt-2 h-1 w-1 rounded-full bg-bm-accent" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
+                  {signalItems.length > 0 ? (
+                    signalItems.map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <span className="mt-2 h-1 w-1 rounded-full bg-bm-accent" />
+                        <span>{item}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-sm text-bm-muted">정보가 없습니다.</li>
+                  )}
                 </ul>
               </section>
               <section className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
@@ -533,67 +519,73 @@ const InfoPanel = () => {
                     추천 병원
                   </p>
                   <span className="text-[11px] text-bm-muted">
-                    {favoriteHospitals.length}곳 저장됨
+                    {hospitalBookmarks.length}곳 저장됨
                   </span>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {recommendedHospitals.map((hospital) => {
-                    const isBookmarked = favoriteHospitals.some(
-                      (item) => item.id === hospital.id,
-                    );
-                    return (
-                      <div
-                        key={hospital.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => {
-                          setSelectedHospitalId(hospital.id);
-                          setIsMapOpen(true);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            setSelectedHospitalId(hospital.id);
+                  {isLoadingHospitals ? (
+                    <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
+                      주변 병원을 검색 중입니다.
+                    </div>
+                  ) : recommendedHospitals.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
+                      로그인 후 주변 병원을 추천해 드립니다.
+                    </div>
+                  ) : (
+                    recommendedHospitals.map((hospital) => {
+                      const isBookmarked = hospitalBookmarks.some(
+                        (item) => item.placeId === hospital.place_id,
+                      );
+                      return (
+                        <div
+                          key={hospital.place_id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            setSelectedHospitalId(hospital.place_id);
                             setIsMapOpen(true);
-                          }
-                        }}
-                        className="flex w-full items-start justify-between gap-3 rounded-2xl border border-bm-border bg-bm-panel px-3 py-3 text-left transition hover:border-bm-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-bm-accent"
-                      >
-                        <div>
-                          <p className="text-sm font-semibold text-bm-text">
-                            {hospital.name}
-                          </p>
-                          <p className="mt-1 text-[11px] text-bm-muted">
-                            {hospital.specialty} · {hospital.distanceKm}km
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (!isAuthenticated) {
-                              router.push("/login");
-                              return;
-                            }
-                            toggleHospital(hospital.id);
                           }}
-                          className={`flex h-8 w-8 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft transition ${
-                            isBookmarked
-                              ? "text-bm-accent"
-                              : "text-bm-muted hover:text-bm-text"
-                          }`}
-                          aria-pressed={isBookmarked}
-                          aria-label="병원 북마크"
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedHospitalId(hospital.place_id);
+                              setIsMapOpen(true);
+                            }
+                          }}
+                          className="flex w-full items-start justify-between gap-3 rounded-2xl border border-bm-border bg-bm-panel px-3 py-3 text-left transition hover:border-bm-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-bm-accent"
                         >
-                          <Bookmark
-                            className={`h-3.5 w-3.5 ${
-                              isBookmarked ? "fill-bm-accent" : ""
+                          <div>
+                            <p className="text-sm font-semibold text-bm-text">
+                              {hospital.name}
+                            </p>
+                            <p className="mt-1 text-[11px] text-bm-muted">
+                              {hospital.road_address || hospital.address}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleToggleHospitalBookmark(hospital);
+                            }}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft transition ${
+                              isBookmarked
+                                ? "text-bm-accent"
+                                : "text-bm-muted hover:text-bm-text"
                             }`}
-                          />
-                        </button>
-                      </div>
-                    );
-                  })}
+                            aria-pressed={isBookmarked}
+                            aria-label="병원 북마크"
+                          >
+                            <Bookmark
+                              className={`h-3.5 w-3.5 ${
+                                isBookmarked ? "fill-bm-accent" : ""
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </section>
             </div>
@@ -605,14 +597,20 @@ const InfoPanel = () => {
                 대표 질환
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {insight.conditions.map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full border border-bm-border px-3 py-2 text-xs text-bm-text"
-                  >
-                    {item}
+                {conditionItems.length > 0 ? (
+                  conditionItems.map((item) => (
+                    <span
+                      key={item}
+                      className="rounded-full border border-bm-border px-3 py-2 text-xs text-bm-text"
+                    >
+                      {item}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-bm-muted">
+                    대표 질환 정보가 없습니다.
                   </span>
-                ))}
+                )}
               </div>
             </div>
           ) : null}

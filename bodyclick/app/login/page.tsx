@@ -1,71 +1,61 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { fetchCurrentUser, updateUserProfile } from "../../lib/api";
 import { useAuthStore } from "../../store/useAuthStore";
 import BirthDatePicker from "../../components/BirthDatePicker";
 import GenderSelect from "../../components/GenderSelect";
 
-// API URL 설정 (없으면 하드코딩 값 사용)
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-// 데이터 타입 정의
-interface UserApiResponse {
-  success: boolean;
-  data?: {
-    name: string;
-    email: string;
-    gender: string | null;
-    birth_date: string | null;
-  };
-}
-
 const LoginPage = () => {
   const router = useRouter();
   
+  // 로딩 및 폼 상태 관리
   const [isLoading, setIsLoading] = useState(true);
   const [gender, setGender] = useState("");
   const [birthdate, setBirthdate] = useState("");
+  
+  // 로그인된 계정 정보 (추가 정보 입력 단계용)
   const [googleAccount, setGoogleAccount] = useState<{ name: string; email: string } | null>(null);
 
   const updateProfile = useAuthStore((state) => state.updateProfile);
+  const setUserFromApi = useAuthStore((state) => state.setUserFromApi);
 
-  /**
-   * 1️⃣ 페이지 진입 시: 사용자 상태 확인
-   */
   useEffect(() => {
     const checkUserStatus = async () => {
       try {
-        // ⚠️ 핵심 수정: credentials: "include"가 있어야 쿠키가 전송됨
-        const res = await fetch(`${API_URL}/api/users/me`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include", // <--- 이 줄이 없으면 무조건 401 에러 남
-        });
+        const res = await fetchCurrentUser();
 
-        // 401이면 로그인 안 된 상태 -> 정상
+        // 401 Unauthorized -> 로그인 안 됨 -> 로그인 버튼 노출
         if (res.status === 401) {
           setIsLoading(false);
           return;
         }
 
-        const json: UserApiResponse = await res.json();
+        // 로그인 성공 시
+        if (res.ok && res.data?.success) {
+          const userData = res.data.data;
+          setUserFromApi(userData);
 
-        if (json.success && json.data) {
-          const userData = json.data;
-
-          // 이미 정보가 다 있으면 바로 /explore로 이동
-          if (userData.gender && userData.birth_date) {
+          // 이미 필수 정보(성별, 생일)가 다 있으면 메인으로 이동
+          if (userData?.gender && userData.birth_date) {
             router.replace("/explore");
             return;
           }
 
-          // 정보가 부족하면 입력 폼 띄우기
+          // 정보가 부족하면 추가 입력 폼 띄우기
           setGoogleAccount({
-            name: userData.name ?? "사용자",
-            email: userData.email,
+            name: userData?.name ?? "사용자",
+            email: userData?.email ?? "",
           });
+          setGender(userData?.gender ?? "");
+          setBirthdate(userData?.birth_date ?? "");
+          return; // 로딩 끄지 않고 폼 렌더링으로 자연스럽게 전환
+        }
+
+        if (res.data && !res.data.success) {
+          console.warn("Login Check Error Response:", res.data);
         }
       } catch (error) {
         console.error("Login Check Error:", error);
@@ -75,51 +65,52 @@ const LoginPage = () => {
     };
 
     checkUserStatus();
-  }, [router]);
+  }, [router, setUserFromApi]);
 
   /**
-   * 2️⃣ Google 로그인 핸들러
+   * 2️⃣ Google 로그인 핸들러 (수정됨)
+   * 수동 URL 조합 대신 signIn 함수 사용 -> 404 및 리다이렉트 문제 해결
    */
-  const handleGoogleLogin = () => {
-    // 로그인 후 성별/생년월일이 비어 있으면 바로 입력할 수 있도록 /login으로 복귀
-    const callbackUrl = `${window.location.origin}/login`;
-    window.location.href = `${API_URL}/api/auth/signin/google?callbackUrl=${encodeURIComponent(
-      callbackUrl,
-    )}`;
-  };
-
-  /**
-   * 3️⃣ 추가 정보 제출
-   */
-  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!gender || !birthdate || !googleAccount) return;
-
+  const handleGoogleLogin = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/users/me`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // PATCH 요청에도 필수
-        body: JSON.stringify({
-          name: googleAccount.name,
-          gender: gender,
-          birth_date: birthdate,
-        }),
+      await signIn("google", {
+        callbackUrl: "/login", // 로그인 완료 후 다시 이 페이지로 돌아와 상태 체크
       });
-
-      const json = await res.json();
-
-      if (json.success) {
-        updateProfile({ name: googleAccount.name, gender, birthdate });
-        router.push("/explore");
-      } else {
-        alert("저장 실패");
-      }
     } catch (error) {
-      console.error(error);
+      console.error("Google 로그인 요청 실패:", error);
     }
   };
 
+  /**
+   * 3️⃣ 추가 정보 제출 핸들러 (타입 오류 수정됨)
+   */
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    
+    // 유효성 검사: 값이 비어있으면 진행하지 않음
+    if (!gender || !birthdate || !googleAccount) return;
+
+    try {
+      const res = await updateUserProfile({
+        name: googleAccount.name,
+        gender: gender as "MALE" | "FEMALE",
+        birth_date: birthdate,
+      });
+
+      if (res.ok && res.data?.success) {
+        // 스토어 업데이트 및 페이지 이동
+        updateProfile({ name: googleAccount.name, gender: gender as "MALE" | "FEMALE" | null | undefined, birthdate });
+        router.push("/explore");
+      } else {
+        alert("정보 저장에 실패했습니다. 다시 시도해주세요.");
+      }
+    } catch (error) {
+      console.error("Profile Update Error:", error);
+      alert("서버 통신 중 오류가 발생했습니다.");
+    }
+  };
+
+  // 로딩 화면
   if (isLoading) {
     return (
       <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bm-bg text-bm-text">
@@ -138,6 +129,7 @@ const LoginPage = () => {
   return (
     <main className="min-h-screen bg-bm-bg text-bm-text">
       <div className="relative min-h-screen overflow-hidden">
+        {/* 배경 효과 */}
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-[radial-gradient(75%_75%_at_15%_15%,rgba(99,199,219,0.18)_0%,transparent_70%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_85%_5%,rgba(255,255,255,0.08)_0%,transparent_60%)]" />
@@ -145,6 +137,8 @@ const LoginPage = () => {
         </div>
 
         <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-6 pb-16 pt-10 md:flex-row md:items-center md:gap-12 lg:pt-20">
+          
+          {/* 좌측: 서비스 소개 섹션 */}
           <section className="flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-bm-muted">
               BodyClick
@@ -162,22 +156,10 @@ const LoginPage = () => {
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {[
-                {
-                  title: "3D 바디맵",
-                  desc: "직관적으로 부위를 탐색",
-                },
-                {
-                  title: "맞춤 인사이트",
-                  desc: "개인 데이터를 반영한 추천",
-                },
-                {
-                  title: "의료 시스템",
-                  desc: "계층별 정보 구조화",
-                },
-                {
-                  title: "빠른 탐색",
-                  desc: "최근 선택 부위 바로 접근",
-                },
+                { title: "3D 바디맵", desc: "직관적으로 부위를 탐색" },
+                { title: "맞춤 인사이트", desc: "개인 데이터를 반영한 추천" },
+                { title: "의료 시스템", desc: "계층별 정보 구조화" },
+                { title: "빠른 탐색", desc: "최근 선택 부위 바로 접근" },
               ].map((item) => (
                 <div
                   key={item.title}
@@ -201,6 +183,7 @@ const LoginPage = () => {
             </div>
           </section>
 
+          {/* 우측: 로그인 및 정보 입력 폼 섹션 */}
           <section className="w-full max-w-md">
             <div className="rounded-[28px] border border-bm-border bg-bm-panel p-8 shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
               <div className="flex items-start justify-between">
@@ -215,13 +198,11 @@ const LoginPage = () => {
                       : "Google 계정으로 빠르게 연결하세요."}
                   </p>
                 </div>
-                <div className="hidden h-10 w-10 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-xs font-semibold text-bm-muted sm:flex">
-                  01
-                </div>
               </div>
 
               {googleAccount ? (
-                <div className="mt-6">
+                // ✅ Case 1: 구글 로그인은 되었으나 추가 정보(성별/생일)가 없는 경우
+                <div className="mt-6 animate-fade-in">
                   <div className="rounded-2xl border border-bm-border bg-bm-panel-soft px-4 py-4">
                     <p className="text-xs text-bm-muted">연결된 계정</p>
                     <p className="mt-2 text-sm font-semibold text-bm-text">
@@ -248,6 +229,7 @@ const LoginPage = () => {
                   </form>
                 </div>
               ) : (
+                // ✅ Case 2: 로그인되지 않은 경우
                 <div className="mt-6">
                   <button
                     type="button"

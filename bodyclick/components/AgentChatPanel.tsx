@@ -11,107 +11,30 @@ import {
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Bookmark, Check, MapPin, X } from "lucide-react";
+import {
+  clearAiContext,
+  createAiAnswer,
+  fetchPlaces,
+  type PlaceResult,
+} from "../lib/api";
+import { getUserLocation } from "../lib/location";
 import { useAuthStore } from "../store/useAuthStore";
 import { useBookmarkStore } from "../store/useBookmarkStore";
 import {
   BODY_PART_LOOKUP,
-  SYSTEM_LABELS,
   getAgentProfileForPart,
   useBodyMapStore,
   type AgentKey,
   type ChatMessage,
 } from "../store/useBodyMapStore";
 
-type ConsultSpecialty =
-  | "cardio"
-  | "vascular"
-  | "ortho"
-  | "resp"
-  | "gi"
-  | "neuro"
-  | "derm";
-
-type CauseCategory =
-  | "infectious"
-  | "inflammatory"
-  | "structural"
-  | "vascular"
-  | "other";
-
-type ConsultResponse = {
-  emergency: boolean;
-  specialty: ConsultSpecialty | null;
-  specialist: {
-    possibleCauses: {
-      category: CauseCategory;
-      examples: string[];
-    }[];
-    whenToSeekCare: string[];
-    recommendedCare: string;
-    followUpQuestions: string[];
-    disclaimer: string;
-  } | null;
-};
-
-const SPECIALTY_LABELS: Record<ConsultSpecialty, string> = {
-  cardio: "심장내과",
-  vascular: "혈관외과",
-  ortho: "정형외과",
-  resp: "호흡기내과",
-  gi: "소화기내과",
-  neuro: "신경과",
-  derm: "피부과",
-};
-
-const CAUSE_CATEGORY_LABELS: Record<CauseCategory, string> = {
-  infectious: "감염성",
-  inflammatory: "염증성",
-  structural: "구조적",
-  vascular: "혈관성",
-  other: "기타",
-};
-
-const formatBulletList = (items: string[]) =>
-  items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- 내용 없음";
-
-const buildConsultMessage = (
-  agentLabel: string,
-  response: ConsultResponse,
-) => {
-  if (response.emergency) {
-    return [
-      "긴급 증상 가능성이 있어요. 지체하지 말고 119 또는 가까운 응급실로 연락하세요.",
-      "호흡곤란, 의식 저하, 심한 흉통, 갑작스러운 마비 등이 있다면 즉시 의료 도움을 받으세요.",
-    ].join("\n");
-  }
-
-  if (!response.specialty || !response.specialist) {
-    return "현재 증상을 분류하는 데 필요한 정보가 부족합니다. 증상, 기간, 강도, 동반 증상을 조금 더 알려주세요.";
-  }
-
-  const { specialist } = response;
-  const causeLines = specialist.possibleCauses.map(
-    (cause) =>
-      `- ${CAUSE_CATEGORY_LABELS[cause.category]}: ${cause.examples.join(", ")}`,
-  );
-
-  return [
-    `${agentLabel} 관점에서 참고 정보를 정리했어요.`,
-    "",
-    "가능한 원인(예시)",
-    causeLines.length ? causeLines.join("\n") : "- 내용 없음",
-    "",
-    "권장 대처",
-    `- ${specialist.recommendedCare}`,
-    "",
-    "진료가 필요한 경우",
-    formatBulletList(specialist.whenToSeekCare),
-    "",
-    "추가 질문",
-    formatBulletList(specialist.followUpQuestions),
-    "",
-    specialist.disclaimer,
-  ].join("\n");
+const SYSTEM_KEYWORDS: Record<string, string> = {
+  MUSCULO: "정형외과",
+  CARDIO: "심장내과",
+  RESP: "호흡기내과",
+  DIGEST: "소화기내과",
+  NERVOUS: "신경과",
+  DERM: "피부과",
 };
 
 const createMessage = (
@@ -133,15 +56,26 @@ const AgentChatPanel = () => {
   const confirmedSymptoms = useBodyMapStore((state) => state.confirmedSymptoms);
   const confirmSymptoms = useBodyMapStore((state) => state.confirmSymptoms);
   const resetSymptoms = useBodyMapStore((state) => state.resetSymptoms);
+  const resolveBodyPartId = useBodyMapStore((state) => state.resolveBodyPartId);
+  const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
+  const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const hospitalCatalog = useBookmarkStore((state) => state.hospitalCatalog);
-  const favoriteHospitals = useBookmarkStore((state) => state.favoriteHospitals);
-  const toggleHospital = useBookmarkStore((state) => state.toggleHospital);
+  const hospitalBookmarks = useBookmarkStore((state) => state.hospitalBookmarks);
+  const refreshHospitalBookmarks = useBookmarkStore(
+    (state) => state.refreshHospitalBookmarks,
+  );
+  const addHospitalBookmark = useBookmarkStore(
+    (state) => state.addHospitalBookmark,
+  );
+  const removeHospitalBookmark = useBookmarkStore(
+    (state) => state.removeHospitalBookmark,
+  );
 
   const agent = getAgentProfileForPart(selectedBodyPart);
   const messages = selectedBodyPart ? chatThreads[selectedBodyPart] ?? [] : [];
   const part = selectedBodyPart ? BODY_PART_LOOKUP[selectedBodyPart] : null;
-  const systemLabel = part ? SYSTEM_LABELS[part.system] : null;
+  const systemLabel = part ? getSystemLabel(part.system) : null;
+  const partLabel = selectedBodyPart ? getBodyPartLabel(selectedBodyPart) : null;
   const isSymptomConfirmed = Boolean(
     selectedBodyPart && confirmedSymptoms[selectedBodyPart],
   );
@@ -153,6 +87,8 @@ const AgentChatPanel = () => {
   const [isPromptDismissed, setIsPromptDismissed] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [nearbyHospitals, setNearbyHospitals] = useState<PlaceResult[]>([]);
+  const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -169,6 +105,45 @@ const AgentChatPanel = () => {
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    refreshHospitalBookmarks();
+  }, [isAuthenticated, refreshHospitalBookmarks]);
+
+  useEffect(() => {
+    if (!part || !isAuthenticated) {
+      setNearbyHospitals([]);
+      setIsLoadingHospitals(false);
+      return;
+    }
+    let isActive = true;
+    const loadPlaces = async () => {
+      setIsLoadingHospitals(true);
+      const location = await getUserLocation();
+      const keyword = SYSTEM_KEYWORDS[part.system] ?? "병원";
+      const response = await fetchPlaces({
+        lat: location.lat,
+        lng: location.lng,
+        keyword,
+      });
+      if (!isActive) {
+        return;
+      }
+      if (response.ok && response.data?.success) {
+        setNearbyHospitals(response.data.data);
+      } else {
+        setNearbyHospitals([]);
+      }
+      setIsLoadingHospitals(false);
+    };
+    loadPlaces();
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, part]);
 
   useEffect(() => {
     setIsModalOpen(false);
@@ -202,14 +177,8 @@ const AgentChatPanel = () => {
   }, [isModalOpen, isMounted]);
 
   const relatedHospitals = useMemo(() => {
-    if (!part) {
-      return [];
-    }
-    return hospitalCatalog
-      .filter((hospital) => hospital.systems.includes(part.system))
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, 5);
-  }, [hospitalCatalog, part]);
+    return nearbyHospitals.slice(0, 5);
+  }, [nearbyHospitals]);
 
   const lastAssistantMessage = useMemo(() => {
     return [...messages].reverse().find((message) => message.role === "assistant");
@@ -264,25 +233,31 @@ const AgentChatPanel = () => {
     abortRef.current = controller;
 
     try {
-      const response = await fetch("/ai-chats/queries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed }),
-        signal: controller.signal,
-      });
+      const bodyPartId = await resolveBodyPartId(selectedBodyPart);
+      if (!bodyPartId) {
+        throw new Error("Body part not resolved");
+      }
 
-      if (!response.ok) {
+      const response = await createAiAnswer(
+        {
+          body_part_id: bodyPartId,
+          question: trimmed,
+        },
+        controller.signal,
+      );
+
+      if (!response.ok || !response.data?.success) {
         throw new Error(`API error: ${response.status}`);
       }
 
-      const data = (await response.json()) as ConsultResponse;
-      const specialtyLabel = data.specialty
-        ? SPECIALTY_LABELS[data.specialty]
-        : agent.specialty;
-      const message = buildConsultMessage(
-        `${specialtyLabel} AI`,
-        data,
-      );
+      const { answer, confidence_score } = response.data.data;
+      const confidence =
+        typeof confidence_score === "number"
+          ? Math.max(0, Math.min(1, confidence_score))
+          : null;
+      const message = confidence !== null
+        ? `${answer}\n\n(신뢰도 ${Math.round(confidence * 100)}%)`
+        : answer;
 
       addChatMessage(
         selectedBodyPart,
@@ -304,7 +279,15 @@ const AgentChatPanel = () => {
         setIsSending(false);
       }
     }
-  }, [addChatMessage, agent, input, isAuthenticated, isSending, selectedBodyPart]);
+  }, [
+    addChatMessage,
+    agent,
+    input,
+    isAuthenticated,
+    isSending,
+    resolveBodyPartId,
+    selectedBodyPart,
+  ]);
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -329,7 +312,7 @@ const AgentChatPanel = () => {
       return;
     }
     try {
-      await fetch("/ai-chats/context", { method: "DELETE" });
+      await clearAiContext();
     } catch {
       // Ignore reset failures to avoid blocking the local UX.
     }
@@ -343,6 +326,20 @@ const AgentChatPanel = () => {
       composerRef.current?.focus();
     });
   }, [resetSymptoms, selectedBodyPart]);
+
+  const handleToggleHospitalBookmark = useCallback(
+    async (hospital: PlaceResult) => {
+      const existing = hospitalBookmarks.find(
+        (item) => item.placeId === hospital.place_id,
+      );
+      if (existing) {
+        await removeHospitalBookmark(existing.bookmarkId);
+        return;
+      }
+      await addHospitalBookmark(hospital);
+    },
+    [addHospitalBookmark, hospitalBookmarks, removeHospitalBookmark],
+  );
 
   const isDisabled = !selectedBodyPart || !isAuthenticated || !agent || isSending;
 
@@ -381,12 +378,12 @@ const AgentChatPanel = () => {
                 주변 병원
               </p>
               <h3 className="mt-2 text-xl font-semibold text-bm-text">
-                {part && systemLabel
-                  ? `${part.label} · ${systemLabel} 병원`
+                {partLabel && systemLabel
+                  ? `${partLabel} · ${systemLabel} 병원`
                   : "관련 병원 추천"}
               </h3>
               <p className="mt-2 text-xs text-bm-muted">
-                현재 위치 기준 5km 이내 · 데모 데이터
+                현재 위치 기반 추천 결과입니다.
               </p>
             </div>
             <button
@@ -410,7 +407,7 @@ const AgentChatPanel = () => {
                   지도 영역
                 </div>
                 <div className="rounded-xl border border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
-                  지도 API 연결 예정 · 3:1 레이아웃 적용
+                  지도 영역은 추후 제공됩니다.
                 </div>
               </div>
             </section>
@@ -423,18 +420,22 @@ const AgentChatPanel = () => {
                 <span>{relatedHospitals.length}곳</span>
               </div>
               <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-                {relatedHospitals.length === 0 ? (
+                {isLoadingHospitals ? (
+                  <div className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4 text-sm text-bm-muted">
+                    주변 병원을 검색 중입니다.
+                  </div>
+                ) : relatedHospitals.length === 0 ? (
                   <div className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4 text-sm text-bm-muted">
                     추천 병원 정보를 준비 중입니다.
                   </div>
                 ) : (
                   relatedHospitals.map((hospital) => {
-                    const isBookmarked = favoriteHospitals.some(
-                      (item) => item.id === hospital.id,
+                    const isBookmarked = hospitalBookmarks.some(
+                      (item) => item.placeId === hospital.place_id,
                     );
                     return (
                       <div
-                        key={hospital.id}
+                        key={hospital.place_id}
                         className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4"
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -443,16 +444,18 @@ const AgentChatPanel = () => {
                               {hospital.name}
                             </p>
                             <p className="mt-1 text-[11px] text-bm-muted">
-                              {hospital.specialty} · {hospital.distanceKm}km
+                              {hospital.road_address || hospital.address}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="rounded-full border border-bm-border bg-bm-panel px-2 py-1 text-[10px] text-bm-muted">
-                              평점 {hospital.rating}
-                            </div>
+                            {typeof hospital.rating === "number" ? (
+                              <div className="rounded-full border border-bm-border bg-bm-panel px-2 py-1 text-[10px] text-bm-muted">
+                                평점 {hospital.rating}
+                              </div>
+                            ) : null}
                             <button
                               type="button"
-                              onClick={() => toggleHospital(hospital.id)}
+                              onClick={() => handleToggleHospitalBookmark(hospital)}
                               className={`flex h-8 w-8 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft transition ${
                                 isBookmarked
                                   ? "text-bm-accent"
@@ -473,16 +476,11 @@ const AgentChatPanel = () => {
                           <MapPin className="h-3.5 w-3.5" />
                           <span>{hospital.address}</span>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {hospital.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full border border-bm-border bg-bm-panel px-2 py-0.5 text-[10px] text-bm-muted"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
+                        {hospital.phone_number ? (
+                          <div className="mt-2 text-[11px] text-bm-muted">
+                            전화 {hospital.phone_number}
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })
@@ -588,7 +586,7 @@ const AgentChatPanel = () => {
                   </p>
                   <p className="mt-2 text-sm text-bm-text">
                     {part
-                      ? `${part.label} 상담을 마무리하고 증상을 확정해 보세요.`
+                      ? `${partLabel ?? "해당 부위"} 상담을 마무리하고 증상을 확정해 보세요.`
                       : "상담을 마무리하고 증상을 확정해 보세요."}
                   </p>
                   <p className="mt-2 text-[11px] text-bm-muted">
@@ -648,7 +646,7 @@ const AgentChatPanel = () => {
                   </p>
                   <p className="mt-1 text-[11px] text-bm-muted">
                     {part && systemLabel
-                      ? `${systemLabel} · ${part.label}`
+                      ? `${systemLabel} · ${partLabel ?? "선택 부위"}`
                       : "맞춤 진료과 기준"}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">

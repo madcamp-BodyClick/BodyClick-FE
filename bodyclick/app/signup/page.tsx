@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { fetchCurrentUser, updateUserProfile } from "../../lib/api";
 import { useAuthStore } from "../../store/useAuthStore";
 import BirthDatePicker from "../../components/BirthDatePicker";
 import GenderSelect from "../../components/GenderSelect";
@@ -12,16 +12,15 @@ import GenderSelect from "../../components/GenderSelect";
 const SignupPage = () => {
   const [gender, setGender] = useState("");
   const [birthdate, setBirthdate] = useState("");
-  const { data: session, status } = useSession();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const updateProfile = useAuthStore((state) => state.updateProfile);
+  const setUserFromApi = useAuthStore((state) => state.setUserFromApi);
   const router = useRouter();
-  const googleAccount = session?.user?.email
-    ? {
-        name: session.user.name ?? "바디클릭 사용자",
-        email: session.user.email,
-      }
-    : null;
+  const [googleAccount, setGoogleAccount] = useState<{
+    name: string;
+    email: string;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -30,23 +29,67 @@ const SignupPage = () => {
   }, [isAuthenticated, router]);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.replace("/login");
-    }
-  }, [router, status]);
+    const loadUser = async () => {
+      const response = await fetchCurrentUser();
+      if (response.status === 401) {
+        router.replace("/login");
+        setIsLoading(false);
+        return;
+      }
+      if (response.ok && response.data?.success) {
+        const user = response.data.data;
+        setUserFromApi(user);
+        if (user.gender && user.birth_date) {
+          router.replace("/explore");
+          return;
+        }
+        setGoogleAccount({
+          name: user.name ?? "바디클릭 사용자",
+          email: user.email,
+        });
+        setGender(user.gender ?? "");
+        setBirthdate(user.birth_date ?? "");
+      }
+      setIsLoading(false);
+    };
+    loadUser();
+  }, [router, setUserFromApi]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!birthdate || !gender || !googleAccount?.email) {
       return;
     }
-    updateProfile({
+    const response = await updateUserProfile({
       name: googleAccount.name,
-      gender,
-      birthdate,
+      gender: gender as "MALE" | "FEMALE",
+      birth_date: birthdate,
     });
-    router.push("/explore");
+    if (response.ok && response.data?.success) {
+      updateProfile({
+        name: googleAccount.name,
+        gender,
+        birthdate,
+      });
+      router.push("/explore");
+      return;
+    }
+    alert("저장 실패");
   };
+
+  if (isLoading) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bm-bg text-bm-text">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_25%_20%,rgba(99,199,219,0.18)_0%,transparent_70%)]" />
+        </div>
+        <div className="relative flex items-center gap-3 rounded-full border border-bm-border bg-bm-panel-soft px-6 py-3 text-sm text-bm-muted">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-bm-accent" />
+          세션 확인 중
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-bm-bg text-bm-text">

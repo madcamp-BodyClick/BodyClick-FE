@@ -6,6 +6,7 @@ const BodyPartSelector = () => {
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
+  const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
 
   const parts = selectedSystem ? BODY_PARTS[selectedSystem] : [];
 
@@ -38,7 +39,7 @@ const BodyPartSelector = () => {
                     : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
                 }`}
               >
-                {part.label}
+                {getBodyPartLabel(part.id)}
               </button>
             );
           })

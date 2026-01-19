@@ -1,10 +1,11 @@
 "use client";
 
-import { SYSTEMS, useBodyMapStore } from "../store/useBodyMapStore";
+import { useBodyMapStore } from "../store/useBodyMapStore";
 
 const SystemSelector = () => {
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const setSystem = useBodyMapStore((state) => state.setSystem);
+  const systems = useBodyMapStore((state) => state.systems);
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white/70 p-5 shadow-sm">
@@ -22,7 +23,7 @@ const SystemSelector = () => {
         </span>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {SYSTEMS.map((system) => {
+        {systems.map((system) => {
           const isActive = selectedSystem === system.id;
           return (
             <button
