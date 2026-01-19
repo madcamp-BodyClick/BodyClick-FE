@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Bookmark, Search } from "lucide-react";
+import { signOut } from "next-auth/react";
 import InfoPanel from "../../components/InfoPanel";
 import Stage3D from "../../components/Stage3D";
 import SystemLayerSelector from "../../components/SystemLayerSelector";
@@ -19,7 +20,7 @@ import {
 } from "../../store/useBodyMapStore";
 
 const ExplorePage = () => {
-  const { isAuthenticated, user, logout, updateProfile } = useAuthStore();
+  const { isAuthenticated, user, updateProfile } = useAuthStore();
   const setSystem = useBodyMapStore((state) => state.setSystem);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
   const recentBodyParts = useBodyMapStore((state) => state.recentBodyParts);
@@ -334,9 +335,7 @@ const ExplorePage = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            logout();
-                            setIsProfileOpen(false);
-                            setIsEditingProfile(false);
+                            signOut({ callbackUrl: "/login" });
                           }}
                           className="mt-3 w-full rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
                         >

@@ -264,7 +264,7 @@ const AgentChatPanel = () => {
     abortRef.current = controller;
 
     try {
-      const response = await fetch("/api/consult", {
+      const response = await fetch("/ai-chats/queries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed }),
@@ -324,9 +324,14 @@ const AgentChatPanel = () => {
     setIsPromptDismissed(false);
   }, [confirmSymptoms, selectedBodyPart]);
 
-  const handleResetSymptoms = useCallback(() => {
+  const handleResetSymptoms = useCallback(async () => {
     if (!selectedBodyPart) {
       return;
+    }
+    try {
+      await fetch("/ai-chats/context", { method: "DELETE" });
+    } catch {
+      // Ignore reset failures to avoid blocking the local UX.
     }
     resetSymptoms(selectedBodyPart);
     setIsPromptDismissed(false);

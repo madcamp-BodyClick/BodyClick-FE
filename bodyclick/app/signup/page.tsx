@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useAuthStore } from "../../store/useAuthStore";
 import BirthDatePicker from "../../components/BirthDatePicker";
 import GenderSelect from "../../components/GenderSelect";
@@ -11,14 +12,16 @@ import GenderSelect from "../../components/GenderSelect";
 const SignupPage = () => {
   const [gender, setGender] = useState("");
   const [birthdate, setBirthdate] = useState("");
+  const { data: session, status } = useSession();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const login = useAuthStore((state) => state.login);
   const updateProfile = useAuthStore((state) => state.updateProfile);
   const router = useRouter();
-  const googleAccount = {
-    name: "바디클릭 사용자",
-    email: "bodyclick.user@gmail.com",
-  };
+  const googleAccount = session?.user?.email
+    ? {
+        name: session.user.name ?? "바디클릭 사용자",
+        email: session.user.email,
+      }
+    : null;
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -26,13 +29,17 @@ const SignupPage = () => {
     }
   }, [isAuthenticated, router]);
 
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/login");
+    }
+  }, [router, status]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!birthdate || !gender) {
+    if (!birthdate || !gender || !googleAccount?.email) {
       return;
     }
-    login(googleAccount.email);
     updateProfile({
       name: googleAccount.name,
       gender,
@@ -77,9 +84,13 @@ const SignupPage = () => {
             <div className="rounded-xl border border-bm-border bg-bm-panel-soft p-3 text-xs text-bm-muted">
               <div className="flex items-center justify-between">
                 <span className="uppercase tracking-[0.2em]">Google 계정</span>
-                <span className="text-bm-text">{googleAccount.name}</span>
+                <span className="text-bm-text">
+                  {googleAccount?.name ?? "Google 계정 확인 중"}
+                </span>
               </div>
-              <p className="mt-1 text-bm-text">{googleAccount.email}</p>
+              <p className="mt-1 text-bm-text">
+                {googleAccount?.email ?? "계정을 불러오는 중입니다."}
+              </p>
             </div>
             <GenderSelect
               label="성별"
