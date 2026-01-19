@@ -201,9 +201,9 @@ const getSystemLabelValue = (
 
 const INACTIVE_LAYER_OPACITY = 0.2;
 export const DEFAULT_CAMERA: CameraPreset = {
-  position: [0, 0.55, 4.6],
-  lookAt: [0, 0.8, 0],
-  zoom: 1,
+  position: [0, 0.2, 10],
+  lookAt: [0, -1.3, 0],
+  zoom: 0.75,
 };
 
 export const CAMERA_PRESETS: Record<BodyPartKey, CameraPreset> = {
@@ -270,12 +270,14 @@ type BodyMapState = {
   confirmedSymptoms: Partial<Record<BodyPartKey, boolean>>;
   recentBodyParts: BodyPartKey[];
   bodyPartSelections: Partial<Record<BodyPartKey, number>>;
+  cameraResetNonce: number;
   setSystem: (system: SystemKey) => void;
   setBodyPart: (part: BodyPartKey | null) => void;
   setActiveTab: (tab: InsightTab) => void;
   addChatMessage: (part: BodyPartKey, message: ChatMessage) => void;
   confirmSymptoms: (part: BodyPartKey) => void;
   resetSymptoms: (part: BodyPartKey) => void;
+  requestCameraReset: () => void;
 };
 
 export const useBodyMapStore = create<BodyMapState>((set, get) => ({
@@ -429,6 +431,7 @@ export const useBodyMapStore = create<BodyMapState>((set, get) => ({
   confirmedSymptoms: {},
   recentBodyParts: [],
   bodyPartSelections: {},
+  cameraResetNonce: 0,
   setSystem: (system) =>
     set((state) => {
       if (state.selectedSystem === system) {
@@ -480,4 +483,6 @@ export const useBodyMapStore = create<BodyMapState>((set, get) => ({
       delete next[part];
       return { confirmedSymptoms: next };
     }),
+  requestCameraReset: () =>
+    set((state) => ({ cameraResetNonce: state.cameraResetNonce + 1 })),
 }));

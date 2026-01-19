@@ -555,6 +555,7 @@ const getOrganFromPoint = (
 const Stage3D = () => {
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
+  const cameraResetNonce = useBodyMapStore((state) => state.cameraResetNonce);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
   const setSystem = useBodyMapStore((state) => state.setSystem);
   const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
@@ -689,6 +690,13 @@ const Stage3D = () => {
     }
   }, [clearFocus, selectedBodyPart]);
 
+  useEffect(() => {
+    if (!cameraResetNonce) {
+      return;
+    }
+    clearFocus(true);
+  }, [cameraResetNonce, clearFocus]);
+
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
     const model = modelRef.current;
@@ -820,7 +828,9 @@ const Stage3D = () => {
                   const homePos = organHomePositions[oKey];
                   const targetPos = isActive ? activeOrganData.targetPosition : undefined;
 
-                  if (!isActive) {
+                  if (selectedBodyPart) {
+                      if (!isActive) return null;
+                  } else if (!isActive) {
                       if (!selectedSystem) return null;
                       if (ORGAN_SYSTEM_MAP[oKey] !== selectedSystem) return null;
                   }

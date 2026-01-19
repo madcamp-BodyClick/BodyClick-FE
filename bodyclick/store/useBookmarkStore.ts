@@ -7,7 +7,7 @@ import {
   removeBodyPartBookmark,
   removeHospitalBookmark,
 } from "../lib/api";
-import { useBodyMapStore } from "./useBodyMapStore";
+import { useBodyMapStore, type BodyPartKey } from "./useBodyMapStore";
 
 export type BodyPartBookmark = {
   bookmarkId: number;
@@ -15,7 +15,7 @@ export type BodyPartBookmark = {
   nameKo: string;
   nameEn: string;
   systemId: number;
-  code?: string | null;
+  code?: BodyPartKey | null;
 };
 
 export type HospitalBookmark = {

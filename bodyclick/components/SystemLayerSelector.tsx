@@ -8,6 +8,9 @@ import {
 const SystemLayerSelector = () => {
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const setSystem = useBodyMapStore((state) => state.setSystem);
+  const requestCameraReset = useBodyMapStore(
+    (state) => state.requestCameraReset,
+  );
   const systems = useBodyMapStore((state) => state.systems);
   const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
 
@@ -29,7 +32,10 @@ const SystemLayerSelector = () => {
             <button
               key={system.id}
               type="button"
-              onClick={() => setSystem(system.id)}
+              onClick={() => {
+                requestCameraReset();
+                setSystem(system.id);
+              }}
               aria-pressed={isActive}
               style={{ animationDelay: `${index * 70}ms` }}
               className={`group flex items-center gap-3 rounded-full px-3 py-2 text-left text-sm transition ${

@@ -15,6 +15,7 @@ import {
   clearAiContext,
   createAiAnswer,
   fetchPlaces,
+  fetchSearchResults,
   type PlaceResult,
 } from "../lib/api";
 import { getUserLocation } from "../lib/location";
@@ -25,6 +26,7 @@ import {
   getAgentProfileForPart,
   useBodyMapStore,
   type AgentKey,
+  type BodyPartKey,
   type ChatMessage,
 } from "../store/useBodyMapStore";
 
@@ -35,6 +37,25 @@ const SYSTEM_KEYWORDS: Record<string, string> = {
   DIGEST: "소화기내과",
   NERVOUS: "신경과",
   DERM: "피부과",
+};
+
+const AGENT_PROMPTS: Record<AgentKey, string> = {
+  orthopedic:
+    "당신은 정형외과 전문 AI입니다. 근골격계 통증/손상/염좌/퇴행성 질환에 집중해 답변합니다. 가능한 원인, 추가로 확인할 증상, 경과 관찰 포인트를 짧게 정리하세요. 심한 통증, 감각 저하, 보행 불가 등 응급 징후가 있으면 즉시 진료를 권유하세요. 한국어로 답변하세요.",
+  cardiology:
+    "당신은 심장내과 전문 AI입니다. 흉통, 심계항진, 호흡곤란 등 심혈관 증상을 중심으로 설명하세요. 위험 징후(휴식 중 흉통, 식은땀, 실신, 심한 호흡곤란)가 있으면 즉시 응급 진료를 권유하세요. 한국어로 답변하세요.",
+  vascular:
+    "당신은 혈관외과 전문 AI입니다. 대동맥/말초혈관 증상, 혈전/혈류 이상 가능성을 중심으로 설명하세요. 급격한 통증, 창백/청색증, 감각 저하 등 응급 징후가 있으면 즉시 진료를 권유하세요. 한국어로 답변하세요.",
+  pulmonology:
+    "당신은 호흡기내과 전문 AI입니다. 기침, 가래, 호흡곤란, 흉부 불편감 등 호흡기 증상에 집중해 답변하세요. 청색증, 고열 지속, 숨참 악화가 있으면 즉시 진료를 권유하세요. 한국어로 답변하세요.",
+  gastroenterology:
+    "당신은 소화기내과 전문 AI입니다. 복통, 속쓰림, 구역, 설사/변비 등 소화기 증상에 집중해 답변하세요. 혈변, 흑변, 심한 복통, 지속 구토가 있으면 즉시 진료를 권유하세요. 한국어로 답변하세요.",
+  neurology:
+    "당신은 신경과 전문 AI입니다. 두통, 어지럼, 감각 이상, 마비 등 신경계 증상에 집중해 답변하세요. 갑작스러운 편마비, 발음 장애, 의식 저하 등 응급 징후가 있으면 즉시 진료를 권유하세요. 한국어로 답변하세요.",
+  dermatology:
+    "당신은 피부과 전문 AI입니다. 발진, 가려움, 염증, 색소 변화 등 피부 증상에 집중해 답변하세요. 급속히 악화되거나 전신 증상이 동반되면 진료를 권유하세요. 한국어로 답변하세요.",
+  general:
+    "당신은 일반 진료 AI입니다. 증상을 정리하고 필요한 추가 질문을 제시하세요. 위험 징후가 있으면 즉시 진료를 권유하세요. 한국어로 답변하세요.",
 };
 
 const createMessage = (
@@ -57,6 +78,7 @@ const AgentChatPanel = () => {
   const confirmSymptoms = useBodyMapStore((state) => state.confirmSymptoms);
   const resetSymptoms = useBodyMapStore((state) => state.resetSymptoms);
   const resolveBodyPartId = useBodyMapStore((state) => state.resolveBodyPartId);
+  const setBodyPartId = useBodyMapStore((state) => state.setBodyPartId);
   const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
   const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -212,6 +234,39 @@ const AgentChatPanel = () => {
     };
   }, []);
 
+  const resolveChatBodyPartId = useCallback(
+    async (partKey: BodyPartKey | null) => {
+      if (!partKey) {
+        return null;
+      }
+      const primaryId = await resolveBodyPartId(partKey);
+      if (primaryId) {
+        return primaryId;
+      }
+      const keywords = Array.from(
+        new Set([
+          getBodyPartLabel(partKey),
+          BODY_PART_LOOKUP[partKey]?.label,
+          partKey.replace(/_/g, " "),
+        ].filter(Boolean)),
+      );
+      for (const keyword of keywords) {
+        const response = await fetchSearchResults(keyword);
+        if (!response.ok || !response.data?.success) {
+          continue;
+        }
+        const match = response.data.data[0];
+        if (!match) {
+          continue;
+        }
+        setBodyPartId(partKey, match.id);
+        return match.id;
+      }
+      return null;
+    },
+    [getBodyPartLabel, resolveBodyPartId, setBodyPartId],
+  );
+
   const handleSend = useCallback(async () => {
     if (!selectedBodyPart || !agent || !isAuthenticated) {
       return;
@@ -233,15 +288,33 @@ const AgentChatPanel = () => {
     abortRef.current = controller;
 
     try {
-      const bodyPartId = await resolveBodyPartId(selectedBodyPart);
+      const bodyPartId = await resolveChatBodyPartId(selectedBodyPart);
       if (!bodyPartId) {
-        throw new Error("Body part not resolved");
+        addChatMessage(
+          selectedBodyPart,
+          createMessage(
+            "assistant",
+            "선택한 부위 정보를 불러오지 못했어요. 다른 부위를 선택하거나 잠시 후 다시 시도해 주세요.",
+            agent.id,
+          ),
+        );
+        return;
       }
+
+      const prompt = AGENT_PROMPTS[agent.id] ?? AGENT_PROMPTS.general;
+      const contextLines = [
+        `전문 분야: ${agent.specialty}`,
+        `부위: ${partLabel ?? selectedBodyPart}`,
+        systemLabel ? `계통: ${systemLabel}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const question = `${prompt}\n\n${contextLines}\n\n사용자 질문: ${trimmed}`;
 
       const response = await createAiAnswer(
         {
           body_part_id: bodyPartId,
-          question: trimmed,
+          question,
         },
         controller.signal,
       );
@@ -265,6 +338,7 @@ const AgentChatPanel = () => {
       );
     } catch (error) {
       if (!controller.signal.aborted) {
+        console.error("AI chat request failed:", error);
         addChatMessage(
           selectedBodyPart,
           createMessage(
@@ -285,8 +359,10 @@ const AgentChatPanel = () => {
     input,
     isAuthenticated,
     isSending,
-    resolveBodyPartId,
+    partLabel,
+    resolveChatBodyPartId,
     selectedBodyPart,
+    systemLabel,
   ]);
 
   const handleKeyDown = useCallback(

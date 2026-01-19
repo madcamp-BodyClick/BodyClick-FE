@@ -222,7 +222,7 @@ const BookmarksPage = () => {
                 ) : (
                   favoritePartCards.map((part) => (
                     <div
-                      key={part.id}
+                      key={part.bookmarkId}
                       className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4"
                     >
                       <div className="flex items-start justify-between gap-2">

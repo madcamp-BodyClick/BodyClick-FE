@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Bookmark, MapPin, X } from "lucide-react";
@@ -37,6 +37,27 @@ const SYSTEM_KEYWORDS: Record<string, string> = {
   NERVOUS: "신경과",
   DERM: "피부과",
 };
+
+const KAKAO_MAP_KEY = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY ?? "";
+
+declare global {
+  interface Window {
+    kakao?: {
+      maps?: {
+        load: (callback: () => void) => void;
+        Map: new (
+          container: HTMLElement,
+          options: { center: { lat: number; lng: number }; level?: number },
+        ) => unknown;
+        LatLng: new (lat: number, lng: number) => { lat: number; lng: number };
+        Marker: new (options: {
+          position: { lat: number; lng: number };
+          map: unknown;
+        }) => unknown;
+      };
+    };
+  }
+}
 
 const InfoPanel = () => {
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
@@ -77,6 +98,7 @@ const InfoPanel = () => {
   const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(
     null,
   );
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const [detail, setDetail] = useState<BodyPartDetail | null>(null);
   const [diseases, setDiseases] = useState<DiseaseSummary[]>([]);
   const [nearbyHospitals, setNearbyHospitals] = useState<PlaceResult[]>([]);
@@ -216,6 +238,54 @@ const InfoPanel = () => {
     };
   }, [isMapOpen, isMounted]);
 
+  useEffect(() => {
+    if (!isMapOpen || !selectedHospital) {
+      return;
+    }
+    if (!KAKAO_MAP_KEY) {
+      console.warn("Kakao map key is missing.");
+      return;
+    }
+    const container = mapContainerRef.current;
+    if (!container) {
+      return;
+    }
+    const { lat, lng } = selectedHospital.location;
+    const loadMap = () => {
+      if (!window.kakao || !window.kakao.maps) {
+        return;
+      }
+      const kakaoMaps = window.kakao.maps;
+      kakaoMaps.load(() => {
+        container.innerHTML = "";
+        const center = new kakaoMaps.LatLng(lat, lng);
+        const map = new kakaoMaps.Map(container, {
+          center,
+          level: 3,
+        });
+        new kakaoMaps.Marker({ position: center, map });
+      });
+    };
+
+    if (window.kakao && window.kakao.maps) {
+      loadMap();
+      return;
+    }
+
+    const existingScript = document.getElementById("kakao-map-sdk");
+    if (existingScript) {
+      existingScript.addEventListener("load", loadMap, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "kakao-map-sdk";
+    script.async = true;
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_MAP_KEY}&autoload=false`;
+    script.onload = loadMap;
+    document.head.appendChild(script);
+  }, [isMapOpen, selectedHospital]);
+
   const handleTabClick = (tabId: InsightTab) => {
     if (tabId === "ai" && !isAuthenticated) {
       router.push("/login");
@@ -308,18 +378,17 @@ const InfoPanel = () => {
           <div className="flex-1 min-h-0 px-6 pb-6">
             <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
               <section className="relative min-h-[260px] overflow-hidden rounded-2xl border border-bm-border bg-bm-panel-soft">
-                <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_20%_0%,rgba(99,199,219,0.18)_0%,transparent_70%)]" />
-                <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(transparent_31px,rgba(255,255,255,0.06)_32px),linear-gradient(90deg,transparent_31px,rgba(255,255,255,0.06)_32px)] [background-size:32px_32px]" />
-                <div className="relative flex h-full flex-col justify-between p-5">
-                  <div className="flex items-center gap-2 text-xs text-bm-muted">
-                    <span className="h-2 w-2 rounded-full bg-bm-accent/70" />
-                    지도 영역
-                  </div>
-                  <div className="rounded-xl border border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
-                    {selectedHospital.road_address ||
-                      selectedHospital.address ||
-                      "주소 정보 없음"}
-                  </div>
+                <div ref={mapContainerRef} className="absolute inset-0" />
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_20%_0%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
+                <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(transparent_31px,rgba(255,255,255,0.06)_32px),linear-gradient(90deg,transparent_31px,rgba(255,255,255,0.06)_32px)] [background-size:32px_32px]" />
+                <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 text-xs text-bm-muted">
+                  <span className="h-2 w-2 rounded-full bg-bm-accent/70" />
+                  {KAKAO_MAP_KEY ? "카카오 지도" : "지도 API 키 필요"}
+                </div>
+                <div className="pointer-events-none absolute bottom-4 left-4 right-4 rounded-xl border border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
+                  {selectedHospital.road_address ||
+                    selectedHospital.address ||
+                    "주소 정보 없음"}
                 </div>
               </section>
 
@@ -328,7 +397,7 @@ const InfoPanel = () => {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-bm-text">
-                        {systemLabel ?? "의료기관"}
+                        {selectedHospital.name}
                       </p>
                       <p className="mt-1 text-[11px] text-bm-muted">
                         {selectedHospital.phone_number
@@ -379,9 +448,6 @@ const InfoPanel = () => {
                       상세 보기
                     </a>
                   ) : null}
-                </div>
-                <div className="mt-4 rounded-2xl border border-dashed border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
-                  경로 안내 및 예약 기능은 지도 API 연결 후 제공됩니다.
                 </div>
               </aside>
             </div>
