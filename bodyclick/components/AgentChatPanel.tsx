@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import { Bookmark, Check, MapPin, X } from "lucide-react";
 import {
   clearAiContext,
@@ -30,6 +31,19 @@ import {
   type ChatMessage,
 } from "../store/useBodyMapStore";
 import TypingBubble from "@/components/TypingBubble";
+
+const KakaoMap = dynamic(
+  () => import("./KakaoMap").then((mod) => mod.KakaoMap), 
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center flex-col gap-2 text-xs text-bm-muted">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-bm-muted border-t-bm-accent" />
+        지도를 불러오는 중입니다...
+      </div>
+    ),
+  }
+);
 
 const SYSTEM_KEYWORDS: Record<string, string> = {
   MUSCULO: "정형외과",
@@ -84,6 +98,7 @@ const AgentChatPanel = () => {
   const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const hospitalBookmarks = useBookmarkStore((state) => state.hospitalBookmarks);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const refreshHospitalBookmarks = useBookmarkStore(
     (state) => state.refreshHospitalBookmarks,
   );
@@ -112,6 +127,7 @@ const AgentChatPanel = () => {
   const [isSending, setIsSending] = useState(false);
   const [aiSummary, setAiSummary] = useState<string>("");
   const [nearbyHospitals, setNearbyHospitals] = useState<PlaceResult[]>([]);
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
@@ -148,6 +164,10 @@ const AgentChatPanel = () => {
     const loadPlaces = async () => {
       setIsLoadingHospitals(true);
       const location = await getUserLocation();
+      if (isActive) {
+        setMyLocation(location);
+        setMapCenter(location);
+      }
       const keyword = SYSTEM_KEYWORDS[part.system] ?? "병원";
       const response = await fetchPlaces({
         lat: location.lat,
@@ -223,7 +243,6 @@ const AgentChatPanel = () => {
     return `${trimmed.slice(0, 120)}...`;
   }, [aiSummary, lastAssistantMessage]);
 
-  // [수정] 스크롤 자동 이동: 메시지가 추가되거나 타이핑 중일 때도 하단으로 이동
   useLayoutEffect(() => {
     if (!threadRef.current) {
       return;
@@ -233,7 +252,7 @@ const AgentChatPanel = () => {
       target.scrollTop = target.scrollHeight;
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [messages.length, isSending]); // isSending 추가
+  }, [messages.length, isSending]);
 
   useEffect(() => {
     return () => {
@@ -327,12 +346,12 @@ const AgentChatPanel = () => {
         controller.signal,
       );
 
+      // 에러 처리 강화 (스크린샷 401 에러 대응)
       if (!response.ok || !response.data?.success) {
-        // 스크린샷 에러에 대응하여 상태 코드 로깅
         console.error(`🚨 API Error ${response.status}:`, response.data);
         if (response.status === 401) {
-            alert("세션이 만료되었습니다. 다시 로그인해주세요.");
-            // 필요 시 로그아웃 처리 로직 추가
+            alert("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
+            // 여기서 로그아웃 처리를 하거나 로그인 페이지로 리다이렉트 하는 것이 좋습니다.
         }
         throw new Error(`API Error: ${response.status}`);
       }
@@ -464,7 +483,6 @@ const AgentChatPanel = () => {
         onClick={() => setIsModalOpen(false)}
       />
       <div className="relative z-10 flex h-[88vh] w-[94vw] max-w-[1240px] flex-col overflow-hidden rounded-[32px] border border-bm-border bg-bm-panel shadow-[0_25px_80px_rgba(0,0,0,0.55)] animate-[fade-up_0.25s_ease-out]">
-        {/* ... (모달 내용은 기존과 동일) ... */}
         <div className="relative px-6 py-5">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
           <div className="relative flex items-start justify-between gap-4">
@@ -494,17 +512,15 @@ const AgentChatPanel = () => {
         <div className="flex-1 min-h-0 px-6 pb-6">
           <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] lg:grid-rows-1">
             <section className="relative min-h-[260px] overflow-hidden rounded-2xl border border-bm-border bg-bm-panel-soft">
-              <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_20%_0%,rgba(99,199,219,0.18)_0%,transparent_70%)]" />
-              <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(transparent_31px,rgba(255,255,255,0.06)_32px),linear-gradient(90deg,transparent_31px,rgba(255,255,255,0.06)_32px)] [background-size:32px_32px]" />
-              <div className="relative flex h-full flex-col justify-between p-5">
-                <div className="flex items-center gap-2 text-xs text-bm-muted">
-                  <span className="h-2 w-2 rounded-full bg-bm-accent/70" />
-                  지도 영역
+              {/* 👇 [수정] 지도 렌더링 로직 (KakaoMap 컴포넌트 내부에서 로딩 처리도 가능하지만, 위치가 없으면 로딩 표시) */}
+              {myLocation ? (
+                <KakaoMap center={mapCenter ?? myLocation} markers={relatedHospitals} />
+              ) : (
+                <div className="flex h-full items-center justify-center flex-col gap-2 text-xs text-bm-muted">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-bm-muted border-t-bm-accent" />
+                  위치 정보를 불러오는 중입니다...
                 </div>
-                <div className="rounded-xl border border-bm-border bg-bm-panel px-3 py-2 text-[11px] text-bm-muted">
-                  지도 영역은 추후 제공됩니다.
-                </div>
-              </div>
+              )}
             </section>
 
             <aside className="flex min-h-0 flex-col overflow-hidden">
@@ -531,7 +547,8 @@ const AgentChatPanel = () => {
                     return (
                       <div
                         key={hospital.place_id}
-                        className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4"
+                        onClick={() => setMapCenter(hospital.location)}
+                        className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4 cursor-pointer transition hover:border-bm-accent hover:bg-bm-panel"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -637,7 +654,6 @@ const AgentChatPanel = () => {
                   </div>
                 );
               })}
-              {/* 👇 [추가] 로딩 중일 때 타이핑 인디케이터 표시 */}
               {isSending && (
                 <div className="flex justify-start">
                   <TypingBubble />
@@ -680,7 +696,6 @@ const AgentChatPanel = () => {
         </div>
 
         {hasConversation ? (
-          // ... (이후 증상 확정 및 병원 추천 UI는 기존과 동일) ...
           !isSymptomConfirmed ? (
             <section className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
