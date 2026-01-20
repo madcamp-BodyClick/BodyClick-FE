@@ -351,7 +351,6 @@ const AgentChatPanel = () => {
         console.error(`🚨 API Error ${response.status}:`, response.data);
         if (response.status === 401) {
             alert("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
-            // 여기서 로그아웃 처리를 하거나 로그인 페이지로 리다이렉트 하는 것이 좋습니다.
         }
         throw new Error(`API Error: ${response.status}`);
       }
@@ -512,7 +511,6 @@ const AgentChatPanel = () => {
         <div className="flex-1 min-h-0 px-6 pb-6">
           <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] lg:grid-rows-1">
             <section className="relative min-h-[260px] overflow-hidden rounded-2xl border border-bm-border bg-bm-panel-soft">
-              {/* 👇 [수정] 지도 렌더링 로직 (KakaoMap 컴포넌트 내부에서 로딩 처리도 가능하지만, 위치가 없으면 로딩 표시) */}
               {myLocation ? (
                 <KakaoMap center={mapCenter ?? myLocation} markers={relatedHospitals} />
               ) : (
@@ -680,18 +678,29 @@ const AgentChatPanel = () => {
             className="mt-3 h-28 w-full resize-none rounded-xl border border-bm-border bg-bm-surface-soft px-3 py-2 text-sm text-bm-text placeholder:text-bm-muted focus:border-bm-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
             placeholder="증상과 궁금한 점을 자세히 알려주세요"
           />
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="text-[11px] text-bm-muted">
+          {/* 👇 [수정됨] 버튼 영역: 로딩 상태에 따라 버튼 전환 (flex 정렬 적용) */}
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-500 leading-tight flex-1">
               의료 정보는 참고용이며 진단을 대신하지 않습니다.
             </p>
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={isDisabled}
-              className="min-w-[72px] rounded-xl bg-bm-accent px-3 py-2 text-center text-xs font-semibold leading-none text-black transition hover:bg-bm-accent-strong disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
-            >
-              {isSending ? "답변 생성 중" : "보내기"}
-            </button>
+            {isSending ? (
+              <button
+                disabled
+                className="flex items-center bg-cyan-600/50 text-cyan-100 text-sm px-4 py-2 rounded-lg cursor-not-allowed whitespace-nowrap"
+              >
+                <span className="animate-spin inline-block mr-2">⟳</span>
+                답변 생성 중...
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!input.trim()}
+                className="rounded-lg bg-bm-accent px-6 py-2 text-sm font-semibold text-black transition hover:bg-bm-accent-strong disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap"
+              >
+                질문하기
+              </button>
+            )}
           </div>
         </div>
 
@@ -701,17 +710,17 @@ const AgentChatPanel = () => {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">
-                    증상 확정
+                    상담 종료
                   </p>
                   <p className="mt-2 text-sm text-bm-text">
                     {part
-                      ? `${partLabel ?? "해당 부위"} 상담을 마무리하고 증상을 확정해 보세요.`
-                      : "상담을 마무리하고 증상을 확정해 보세요."}
+                      ? `상담을 마무리하고 주변 병원을 찾아볼까요?`
+                      : "상담을 마무리하고 주변 병원을 찾아볼까요?"}
                   </p>
                   <p className="mt-2 text-[11px] text-bm-muted">
                     {canConfirm
-                      ? "확정되면 주변 관련 병원을 안내해 드려요."
-                      : "대화를 1회 이상 완료하면 확정할 수 있어요."}
+                      ? "종료되면 주변 관련 병원을 안내해 드려요."
+                      : "대화를 1회 이상 완료하면 종료할 수 있어요."}
                   </p>
                 </div>
                 <button
@@ -720,7 +729,7 @@ const AgentChatPanel = () => {
                   disabled={!canConfirm}
                   className="rounded-xl bg-bm-accent px-3 py-2 text-xs font-semibold text-black transition hover:bg-bm-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  증상 확정
+                  상담 종료
                 </button>
               </div>
               {summarySnippet ? (
@@ -743,7 +752,7 @@ const AgentChatPanel = () => {
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-bm-text">
-                      증상 확정 완료
+                      상담 종료 완료
                     </p>
                     <p className="text-[11px] text-bm-muted">
                       {agent.specialty} AI 상담이 마무리되었습니다.
