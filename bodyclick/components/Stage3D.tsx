@@ -99,21 +99,17 @@ const ORGAN_SCALE_MULTIPLIER: Partial<Record<OrganKey, number>> = {
   spinal: 1.1,
 };
 
-// [위치 보정] 등 뒤나 몸 안쪽 깊숙이 배치하기 위해 Z값을 더 낮춤 (-값: 등쪽)
 const ORGAN_POSITION_CORRECTIONS: Partial<Record<OrganKey, [number, number, number]>> = {
   brain: [0, 0.48, 0.0],
   lung: [0, 0.18, 0.02],
   heart: [0.03, 0.20, 0.05],
-  // [수정] 대동맥: 척추 쪽으로 더 깊게 이동 (0.0 -> -0.08)
   aorta: [0, 0.1, -0.08],          
   bronchus: [0, 0.28, 0.02],      
   liver: [-0.1, 0.02, 0.05],
   stomach: [0.08, 0.05, 0.05],   
   pancreas: [0, -0.02, -0.05],
   intestine: [0, -0.22, 0.05],   
-  // [수정] 척추: 등 뒤쪽 깊숙이 (-0.15 유지, 확실한 등쪽)
   vertebra: [0, 0, -0.15],       
-  // [수정] 척수: 척추 내부
   spinal: [0, 0.25, -0.15],      
   shoulder: [0.25, 0.3, 0.0],    
   knee: [0.1, -0.65, 0.05],
@@ -160,18 +156,17 @@ const CAMERA_DISTANCE_MULTIPLIER: Partial<Record<BodyPartKey, number>> = {
   shoulder: 1.05,
 };
 
-// [앵커 수정] 깊이(nz)를 0.5(중앙) 혹은 0.4(등쪽)로 설정하여 초기 위치 보정
 const BODY_PART_ANCHOR: Partial<
   Record<BodyPartKey, { nx: number; ny: number; nz: number }>
 > = {
   brain: { nx: 0.5, ny: 0.9, nz: 0.55 },
   shoulder: { nx: 0.75, ny: 0.78, nz: 0.55 },
   heart: { nx: 0.5, ny: 0.73, nz: 0.55 },
-  aorta: { nx: 0.5, ny: 0.79, nz: 0.45 }, // 등쪽
+  aorta: { nx: 0.5, ny: 0.79, nz: 0.45 }, 
   lung: { nx: 0.5, ny: 0.74, nz: 0.55 },
   trachea: { nx: 0.5, ny: 0.79, nz: 0.5 },
-  spine: { nx: 0.5, ny: 0.62, nz: 0.4 },   // 등쪽
-  spinal_cord: { nx: 0.5, ny: 0.62, nz: 0.4 }, // 등쪽
+  spine: { nx: 0.5, ny: 0.62, nz: 0.4 },   
+  spinal_cord: { nx: 0.5, ny: 0.62, nz: 0.4 }, 
   liver: { nx: 0.42, ny: 0.56, nz: 0.55 },
   pancreas: { nx: 0.5, ny: 0.52, nz: 0.5 },
   stomach: { nx: 0.48, ny: 0.54, nz: 0.55 },
@@ -578,6 +573,76 @@ const Stage3D = () => {
   
   const bodyOffsetX = 0;
 
+  const moveCameraToPart = useCallback((partKey: BodyPartKey | null) => {
+    if (!partKey) {
+        setActiveOrganData(null);
+        targetPositionRef.current = new Vector3(...DEFAULT_CAMERA.position);
+        targetLookAtRef.current = new Vector3(...DEFAULT_CAMERA.lookAt);
+        return;
+    }
+
+    if (partKey === "skin") {
+        setActiveOrganData(null);
+        targetPositionRef.current = new Vector3(...DEFAULT_CAMERA.position);
+        targetLookAtRef.current = new Vector3(...DEFAULT_CAMERA.lookAt);
+        return;
+    }
+
+    const organKey = BODY_PART_TO_ORGAN_KEY[partKey];
+    if (!organKey) return;
+
+    const model = modelRef.current;
+    if (!model) return;
+    
+    // Bounds check
+    const bounds = modelBoundsRef.current ?? new Box3().setFromObject(model);
+    modelBoundsRef.current = bounds;
+    
+    const center = getNormalizedCenterForPart(partKey);
+    if (!center) return;
+    
+    const centerWorld = getWorldPointFromNormalized(bounds, center);
+    const focusOffset = getFocusOffset(partKey);
+
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    
+    // Calculate direction (default to front if undefined)
+    let direction = new Vector3(0, 0, 1);
+    if (camera && controls) {
+        direction = camera.position.clone().sub(controls.target);
+        if (direction.lengthSq() < 0.0001) direction.set(0, 0, 1);
+        direction.normalize();
+    }
+
+    const offsetMultiplier = ORGAN_CAMERA_OFFSET_MULTIPLIER[organKey] ?? 1;
+    const targetOrganPosition = centerWorld.clone().add(focusOffset);
+    targetOrganPosition.add(direction.clone().multiplyScalar(ORGAN_CAMERA_OFFSET * offsetMultiplier));
+
+    // Update active organ
+    setActiveOrganData({
+        key: organKey,
+        targetPosition: [targetOrganPosition.x, targetOrganPosition.y, targetOrganPosition.z],
+    });
+
+    // Update camera position
+    const distanceMultiplier = CAMERA_DISTANCE_MULTIPLIER[partKey] ?? 1;
+    const targetPosition = centerWorld.clone().add(focusOffset).clone().add(
+        direction.multiplyScalar(FOCUS_DISTANCE * distanceMultiplier)
+    );
+    
+    const kneeOffset = getKneeCameraOffsetX(partKey, BODY_PART_ANCHOR);
+    const lateralOffset = getLateralCameraOffsetX(partKey, BODY_PART_ANCHOR);
+    const totalOffset = kneeOffset || lateralOffset;
+    if (totalOffset) {
+        targetPosition.add(new Vector3(totalOffset, 0, 0));
+    }
+    
+    targetPositionRef.current = targetPosition;
+    targetLookAtRef.current = centerWorld.clone().add(focusOffset);
+  }, []);
+
+
   const clearFocus = useCallback((resetCameraView = false) => {
     setActiveOrganData(null);
     if (resetCameraView) {
@@ -615,87 +680,15 @@ const Stage3D = () => {
   }, [bodyOffsetX, handleModelLoaded]);
 
   useEffect(() => {
-    if (!selectedBodyPart) {
-      setActiveOrganData(null);
-      return;
-    }
-
-    if (selectedBodyPart === "skin") {
-      clearFocus(true);
-      return;
-    }
-
-    const organKey = BODY_PART_TO_ORGAN_KEY[selectedBodyPart];
-    if (!organKey) {
-      setActiveOrganData(null);
-      return;
-    }
-
-    const model = modelRef.current;
-    if (!model) return;
-    const bounds = modelBoundsRef.current ?? new Box3().setFromObject(model);
-    modelBoundsRef.current = bounds;
-    const center = getNormalizedCenterForPart(selectedBodyPart);
-    if (!center) {
-      setActiveOrganData(null);
-      return;
-    }
-    const centerWorld = getWorldPointFromNormalized(bounds, center);
-    
-    // [FIX 1: ReferenceError 해결] focusOffset을 사용 전에 정의
-    const focusOffset = getFocusOffset(selectedBodyPart);
-
-    const targetOrganPosition = centerWorld.clone();
-    targetOrganPosition.add(focusOffset);
-
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    if (camera && controls) {
-      const direction = camera.position.clone().sub(controls.target);
-      if (direction.lengthSq() < 0.0001) direction.set(0, 0, 1);
-      direction.normalize();
-      const offsetMultiplier = ORGAN_CAMERA_OFFSET_MULTIPLIER[organKey] ?? 1;
-      targetOrganPosition.add(
-        direction.multiplyScalar(ORGAN_CAMERA_OFFSET * offsetMultiplier),
-      );
-    }
-
-    setActiveOrganData({
-      key: organKey,
-      targetPosition: [targetOrganPosition.x, targetOrganPosition.y, targetOrganPosition.z],
-    });
-
-    if (camera && controls) {
-      const direction = camera.position.clone().sub(controls.target);
-      if (direction.lengthSq() < 0.0001) direction.set(0, 0, 1);
-      direction.normalize();
-      
-      const distanceMultiplier = CAMERA_DISTANCE_MULTIPLIER[selectedBodyPart] ?? 1;
-      const targetPosition = centerWorld
-        .clone()
-        .add(focusOffset) // [FIX 1] 정의된 focusOffset 사용
-        .clone()
-        .add(direction.multiplyScalar(FOCUS_DISTANCE * distanceMultiplier));
-      const kneeOffset = getKneeCameraOffsetX(selectedBodyPart, BODY_PART_ANCHOR);
-      const lateralOffset = getLateralCameraOffsetX(
-        selectedBodyPart,
-        BODY_PART_ANCHOR,
-      );
-      const totalOffset = kneeOffset || lateralOffset;
-      if (totalOffset) {
-        targetPosition.add(new Vector3(totalOffset, 0, 0));
-      }
-      targetPositionRef.current = targetPosition;
-      targetLookAtRef.current = centerWorld.clone().add(focusOffset);
-    }
-  }, [clearFocus, selectedBodyPart]);
+    moveCameraToPart(selectedBodyPart);
+  }, [selectedBodyPart, moveCameraToPart]);
 
   useEffect(() => {
-    if (!cameraResetNonce) {
-      return;
+    if (cameraResetNonce > 0) {
+        console.log("📸 [Stage3D] Camera Reset Triggered for:", selectedBodyPart);
+        moveCameraToPart(selectedBodyPart);
     }
-    clearFocus(true);
-  }, [cameraResetNonce, clearFocus]);
+  }, [cameraResetNonce, selectedBodyPart, moveCameraToPart]);
 
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
@@ -714,49 +707,11 @@ const Stage3D = () => {
       return;
     }
 
-    const centerWorld = hit.centerWorld.clone();
     const partSystem = BODY_PART_LOOKUP[hit.storeKey]?.system;
     if (partSystem && selectedSystem !== partSystem) {
       setSystem(partSystem);
     }
     setBodyPart(hit.storeKey);
-
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    if (!camera || !controls) return;
-
-    const direction = camera.position.clone().sub(controls.target);
-    if (direction.lengthSq() < 0.0001) direction.set(0, 0, 1);
-    direction.normalize();
-    const offsetMultiplier = ORGAN_CAMERA_OFFSET_MULTIPLIER[hit.organKey] ?? 1;
-    
-    // [FIX 1] focusOffset 정의 (클릭 핸들러 내부에서도 필요)
-    const focusOffset = getFocusOffset(hit.storeKey);
-
-    const targetOrganPosition = centerWorld.clone().add(focusOffset);
-    targetOrganPosition.add(
-        direction.multiplyScalar(ORGAN_CAMERA_OFFSET * offsetMultiplier)
-    );
-      
-    setActiveOrganData({
-      key: hit.organKey,
-      targetPosition: [targetOrganPosition.x, targetOrganPosition.y, targetOrganPosition.z],
-    });
-
-    const distanceMultiplier = CAMERA_DISTANCE_MULTIPLIER[hit.storeKey] ?? 1;
-    const targetPosition = centerWorld
-      .clone()
-      .add(focusOffset)
-      .clone()
-      .add(direction.multiplyScalar(FOCUS_DISTANCE * distanceMultiplier));
-    const kneeOffset = getKneeCameraOffsetX(hit.storeKey, BODY_PART_ANCHOR);
-    const lateralOffset = getLateralCameraOffsetX(hit.storeKey, BODY_PART_ANCHOR);
-    const totalOffset = kneeOffset || lateralOffset;
-    if (totalOffset) {
-      targetPosition.add(new Vector3(totalOffset, 0, 0));
-    }
-    targetPositionRef.current = targetPosition;
-    targetLookAtRef.current = centerWorld.clone().add(focusOffset);
   };
 
   const parts = selectedSystem ? BODY_PARTS[selectedSystem] : [];
@@ -811,7 +766,7 @@ const Stage3D = () => {
               targetPositionRef={targetPositionRef}
               targetLookAtRef={targetLookAtRef}
             />
-            {/* [FIX 2] makeDefault 추가로 이벤트 바인딩 안정화 */}
+            
             <OrbitControls
               ref={controlsRef}
               makeDefault

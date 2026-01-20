@@ -8,6 +8,10 @@ import {
   type DiseaseSummary,
 } from "../lib/api";
 
+// ----------------------------------------------------------------------
+// Types & Constants
+// ----------------------------------------------------------------------
+
 export type SystemKey =
   | "MUSCULO"
   | "CARDIO"
@@ -244,6 +248,10 @@ export const getBodyPartOpacity = (
   return getSystemLayerOpacity(activeSystem, partSystem);
 };
 
+// ----------------------------------------------------------------------
+// Store Interface & Implementation
+// ----------------------------------------------------------------------
+
 type BodyMapState = {
   systems: BodySystem[];
   systemLabels: Partial<Record<SystemKey, string>>;
@@ -273,6 +281,10 @@ type BodyMapState = {
   cameraResetNonce: number;
   setSystem: (system: SystemKey) => void;
   setBodyPart: (part: BodyPartKey | null) => void;
+  // 👇 [추가] 북마크 페이지 등 외부에서 사용할 별칭(Alias) 함수들
+  setSelectedSystem: (system: SystemKey | null) => void;
+  setSelectedBodyPart: (part: BodyPartKey | null) => void;
+  
   setActiveTab: (tab: InsightTab) => void;
   addChatMessage: (part: BodyPartKey, message: ChatMessage) => void;
   confirmSymptoms: (part: BodyPartKey) => void;
@@ -459,6 +471,13 @@ export const useBodyMapStore = create<BodyMapState>((set, get) => ({
         bodyPartSelections: nextSelections,
       };
     }),
+  // 👇 [추가] 구현: 기존 함수 재사용
+  setSelectedSystem: (system) => {
+    if (system) get().setSystem(system);
+    else set({ selectedSystem: null });
+  },
+  setSelectedBodyPart: (part) => get().setBodyPart(part),
+  
   setActiveTab: (tab) => set({ activeTab: tab }),
   addChatMessage: (part, message) =>
     set((state) => ({

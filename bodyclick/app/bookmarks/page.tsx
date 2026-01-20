@@ -4,23 +4,26 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { Bookmark, MapPin, X, ArrowRight, Stethoscope } from "lucide-react";
+import { Bookmark, MapPin, X, ArrowRight, Stethoscope, ArrowLeft } from "lucide-react";
 
 import {
   fetchBodyPartBookmarks,
   fetchHospitalBookmarks,
   removeBodyPartBookmark,
   removeHospitalBookmark,
-  fetchPlaces, // 👈 위치 찾기 위해 필요
+  fetchPlaces,
   type BodyPartBookmarkItem,
   type HospitalBookmarkItem,
   type PlaceResult,
-} from "@/lib/api"; 
+} from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useBodyMapStore, type BodyPartKey } from "@/store/useBodyMapStore";
+import {
+  useBodyMapStore,
+  type BodyPartKey,
+  BODY_PART_LOOKUP,
+} from "@/store/useBodyMapStore";
 import { getUserLocation } from "@/lib/location";
 
-// 지도 컴포넌트 (SSR 제외)
 const KakaoMap = dynamic(
   () => import("@/components/KakaoMap").then((mod) => mod.KakaoMap),
   {
@@ -38,20 +41,19 @@ export default function BookmarksPage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const user = useAuthStore((state) => state.user);
-  
-  // 스토어 액션
+
   const setSelectedBodyPart = useBodyMapStore((state) => state.setSelectedBodyPart);
+  const setSelectedSystem = useBodyMapStore((state) => state.setSelectedSystem);
+  const requestCameraReset = useBodyMapStore((state) => state.requestCameraReset);
 
   const [bodyParts, setBodyParts] = useState<BodyPartBookmarkItem[]>([]);
   const [hospitals, setHospitals] = useState<HospitalBookmarkItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 지도 관련 상태
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [selectedHospitalInfo, setSelectedHospitalInfo] = useState<PlaceResult | null>(null);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
 
-  // 1. 데이터 로드
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -79,41 +81,41 @@ export default function BookmarksPage() {
     }
   }, [isAuthenticated]);
 
-  // 👉 [기능 1] 부위 클릭 핸들러
+  // 👉 [핵심 수정] 3D 카메라 이동을 위한 지연 로직 적용
   const handleBodyPartClick = (item: BodyPartBookmarkItem) => {
-    // 1. 영어 이름(name_en)을 스토어 키 형식(대문자 등)으로 변환
-    // (BodyMapStore의 키 형식에 맞춰야 합니다. 보통 대문자나 소문자 일치 필요)
-    // 예: "Heart" -> "HEART" 또는 그대로 사용
-    let partKey = item.body_part.name_en; 
-    
-    // 만약 스토어 키가 대문자라면: partKey = partKey.toUpperCase();
-    // 만약 스토어 키가 소문자라면: partKey = partKey.toLowerCase();
-    
-    setSelectedBodyPart(partKey as BodyPartKey);
-    
-    // 2. 탐색 페이지로 이동
-    router.push("/"); 
+    const partKey = item.body_part.name_en.trim().toLowerCase() as BodyPartKey;
+    const partInfo = BODY_PART_LOOKUP[partKey];
+
+    // 1. 계통(System)을 먼저 설정 (이때 내부적으로 bodyPart는 null이 됨)
+    if (partInfo) {
+      setSelectedSystem(partInfo.system);
+    }
+
+    // 2. 페이지 이동 명령
+    router.push("/explore");
+
+    // 3. [중요] 이동 후 약간의 딜레이를 두고 부위를 설정
+    // 이렇게 해야 Explore 페이지의 3D 캔버스가 로드된 후 "변화"를 감지하여 카메라가 줌인됩니다.
+    setTimeout(() => {
+      setSelectedBodyPart(partKey);
+      requestCameraReset();
+    }, 150); // 0.15초 딜레이
   };
 
-  // 👉 [기능 2] 병원 클릭 핸들러 (위치 정보 검색)
   const handleHospitalClick = async (item: HospitalBookmarkItem) => {
     setIsSearchingLocation(true);
-    
     try {
-      // 내 위치 가져오기 (검색 정확도 향상용)
       const myLocation = await getUserLocation();
-      
-      // 병원 이름으로 검색하여 위치 정보(lat, lng) 획득
       const response = await fetchPlaces({
         lat: myLocation.lat,
         lng: myLocation.lng,
-        keyword: item.name, // 병원 이름으로 검색
+        keyword: item.name,
       });
 
       if (response.ok && response.data?.data && response.data.data.length > 0) {
-        // 검색 결과 중 place_id가 같거나 이름이 같은 첫 번째 병원 선택
-        const match = response.data.data.find(p => p.place_id === item.place_id) || response.data.data[0];
-        
+        const match =
+          response.data.data.find((p) => p.place_id === item.place_id) ||
+          response.data.data[0];
         setSelectedHospitalInfo(match);
         setIsMapOpen(true);
       } else {
@@ -127,10 +129,9 @@ export default function BookmarksPage() {
     }
   };
 
-  // 삭제 핸들러
   const handleDeletePart = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    if (confirm("삭제하시겠습니까?")) {
+    if (confirm("즐겨찾기를 해제하시겠습니까?")) {
       await removeBodyPartBookmark(id);
       loadData();
     }
@@ -138,58 +139,59 @@ export default function BookmarksPage() {
 
   const handleDeleteHospital = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    if (confirm("삭제하시겠습니까?")) {
+    if (confirm("즐겨찾기를 해제하시겠습니까?")) {
       await removeHospitalBookmark(id);
       loadData();
     }
   };
 
-  // 지도 모달
-  const mapModal = isMapOpen && selectedHospitalInfo ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8" role="dialog">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMapOpen(false)} />
-      <div className="relative z-10 flex h-[80vh] w-[90vw] max-w-[1000px] flex-col overflow-hidden rounded-[32px] border border-bm-border bg-bm-panel shadow-2xl animate-[fade-up_0.2s_ease-out]">
-        
-        <div className="relative flex items-center justify-between px-6 py-5 border-b border-bm-border bg-bm-panel">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-bm-muted">병원 위치</p>
-            <h3 className="mt-1 text-lg font-bold text-bm-text">{selectedHospitalInfo.name}</h3>
+  const mapModal =
+    isMapOpen && selectedHospitalInfo ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8" role="dialog">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMapOpen(false)} />
+        <div className="relative z-10 flex h-[80vh] w-[90vw] max-w-[1000px] flex-col overflow-hidden rounded-[32px] border border-bm-border bg-bm-panel shadow-2xl animate-[fade-up_0.2s_ease-out]">
+          <div className="relative flex items-center justify-between px-6 py-5 border-b border-bm-border bg-bm-panel">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-bm-muted">병원 위치</p>
+              <h3 className="mt-1 text-lg font-bold text-bm-text">{selectedHospitalInfo.name}</h3>
+            </div>
+            <button onClick={() => setIsMapOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-bm-panel-soft text-bm-muted hover:text-bm-text transition">
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <button onClick={() => setIsMapOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-bm-panel-soft text-bm-muted hover:text-bm-text transition">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 relative bg-bm-panel-soft">
-          {/* 지도 표시 */}
-          <KakaoMap 
-            center={selectedHospitalInfo.location} 
-            markers={[selectedHospitalInfo]} 
-          />
-          
-          <div className="absolute bottom-6 left-6 right-6 pointer-events-none">
-            <div className="inline-flex items-center gap-2 rounded-xl border border-bm-border bg-bm-panel/90 backdrop-blur px-4 py-3 text-sm text-bm-text shadow-lg">
-              <MapPin className="h-4 w-4 text-bm-accent" />
-              {selectedHospitalInfo.address}
+          <div className="flex-1 relative bg-bm-panel-soft">
+            <KakaoMap center={selectedHospitalInfo.location} markers={[selectedHospitalInfo]} />
+            <div className="absolute bottom-6 left-6 right-6 pointer-events-none">
+              <div className="inline-flex items-center gap-2 rounded-xl border border-bm-border bg-bm-panel/90 backdrop-blur px-4 py-3 text-sm text-bm-text shadow-lg">
+                <MapPin className="h-4 w-4 text-bm-accent" />
+                {selectedHospitalInfo.address}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  ) : null;
+    ) : null;
 
   return (
     <div className="min-h-screen bg-bm-bg px-6 py-12 lg:px-12">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-12">
-          <p className="text-sm font-semibold uppercase tracking-widest text-bm-accent">내 북마크</p>
-          <h1 className="mt-2 text-3xl font-bold text-bm-text">
-            {user?.name ? `${user.name}님의 즐겨찾기` : "나의 즐겨찾기"}
-          </h1>
-          <p className="mt-2 text-bm-muted">자주 보는 부위와 병원을 한 곳에서 확인하세요.</p>
+        <header className="mb-12 flex items-start gap-4">
+          <button
+            onClick={() => router.back()}
+            className="group flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft text-bm-muted transition hover:border-bm-accent hover:text-bm-text"
+            aria-label="뒤로 가기"
+          >
+            <ArrowLeft className="h-6 w-6 transition group-hover:-translate-x-1" />
+          </button>
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-bm-accent">내 북마크</p>
+            <h1 className="mt-2 text-3xl font-bold text-bm-text">
+              {user?.name ? `${user.name}님의 즐겨찾기` : "나의 즐겨찾기"}
+            </h1>
+            <p className="mt-2 text-bm-muted">자주 보는 부위와 병원을 한 곳에서 확인하세요.</p>
+          </div>
         </header>
 
-        {/* 로딩 표시 (위치 검색 중일 때) */}
         {isSearchingLocation && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3 rounded-2xl bg-bm-panel p-6 shadow-xl border border-bm-border">
@@ -216,26 +218,20 @@ export default function BookmarksPage() {
               {bodyParts.map((item) => (
                 <div
                   key={item.bookmark_id}
-                  onClick={() => handleBodyPartClick(item)} // 🚀 클릭 시 Explore로 이동
+                  onClick={() => handleBodyPartClick(item)}
                   className="group relative flex cursor-pointer items-center justify-between rounded-2xl border border-bm-border bg-bm-panel p-5 transition hover:border-bm-accent hover:bg-bm-panel-soft"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bm-surface text-bm-muted group-hover:text-bm-accent">
-                      <Bookmark className="h-5 w-5 fill-current" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-bm-muted">관심 부위</p>
-                      <p className="text-lg font-semibold text-bm-text">{item.body_part.name_ko}</p>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-bm-muted">관심 부위</p>
+                    <p className="mt-1 text-lg font-semibold text-bm-text">{item.body_part.name_ko}</p>
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <ArrowRight className="h-5 w-5 text-bm-muted opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100" />
+                  <div className="flex shrink-0 items-center gap-2 pl-3">
                     <button
                       onClick={(e) => handleDeletePart(e, item.bookmark_id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-bm-surface text-bm-muted hover:text-red-400 z-10"
+                      className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-bm-surface text-bm-muted hover:text-bm-accent z-10"
+                      aria-label="북마크 해제"
                     >
-                      <X className="h-4 w-4" />
+                      <Bookmark className="h-4 w-4 fill-bm-accent text-bm-accent" />
                     </button>
                   </div>
                 </div>
@@ -262,7 +258,7 @@ export default function BookmarksPage() {
               {hospitals.map((item) => (
                 <div
                   key={item.bookmark_id}
-                  onClick={() => handleHospitalClick(item)} // 🚀 클릭 시 위치 검색 후 지도 오픈
+                  onClick={() => handleHospitalClick(item)}
                   className="group relative flex cursor-pointer items-center justify-between rounded-2xl border border-bm-border bg-bm-panel p-5 transition hover:border-bm-accent hover:bg-bm-panel-soft"
                 >
                   <div className="min-w-0">
@@ -272,11 +268,11 @@ export default function BookmarksPage() {
                       <p className="truncate">{item.address || "주소 정보 없음"}</p>
                     </div>
                   </div>
-                  
                   <div className="flex shrink-0 items-center gap-2 pl-3">
                     <button
                       onClick={(e) => handleDeleteHospital(e, item.bookmark_id)}
                       className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-bm-surface text-bm-muted hover:text-bm-accent z-10"
+                      aria-label="북마크 해제"
                     >
                       <Bookmark className="h-4 w-4 fill-bm-accent text-bm-accent" />
                     </button>
@@ -290,7 +286,6 @@ export default function BookmarksPage() {
           </section>
         </div>
       </div>
-
       {isMapOpen && createPortal(mapModal, document.body)}
     </div>
   );
