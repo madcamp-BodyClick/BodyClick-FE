@@ -1,11 +1,15 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+// 공통 API 응답 래퍼 (HTTP 상태 코드 포함)
 type ApiResult<T> = {
   ok: boolean;
   status: number;
   data: T | null;
 };
 
+// ==========================================
+// User Types
+// ==========================================
 export type UserProfile = {
   id: string;
   email: string;
@@ -21,6 +25,9 @@ export type UserResponse = {
   data: UserProfile;
 };
 
+// ==========================================
+// Body Data Types
+// ==========================================
 export type BodySystem = {
   id: number;
   code: string;
@@ -42,7 +49,7 @@ export type BodyPartDetail = {
   nameKo: string;
   nameEn: string;
   description?: string | null;
-  keyRoles?: unknown;
+  keyRoles?: unknown; // 추후 구체적인 타입 정의 권장
   observationPoints?: unknown;
   splineObjectId?: string | null;
   viewCamera?: unknown;
@@ -68,6 +75,9 @@ export type DiseaseListResponse = {
   data: DiseaseSummary[];
 };
 
+// ==========================================
+// Search Types
+// ==========================================
 export type SearchHomePopularItem = {
   id: number;
   name: string;
@@ -102,6 +112,9 @@ export type SearchResponse = {
   data: SearchResultItem[];
 };
 
+// ==========================================
+// Bookmark Types
+// ==========================================
 export type BodyPartBookmarkItem = {
   bookmark_id: number;
   created_at: string;
@@ -133,6 +146,9 @@ export type HospitalBookmarksResponse = {
   data: HospitalBookmarkItem[];
 };
 
+// ==========================================
+// Map/Place Types
+// ==========================================
 export type PlaceResult = {
   place_id: string;
   name: string;
@@ -155,21 +171,43 @@ export type PlacesResponse = {
   data: PlaceResult[];
 };
 
-export type AiAnswerResponse = {
-  success: boolean;
-  data: {
-    id: number;
-    answer: string;
-    confidence_score: number;
-    created_at: string;
+// ==========================================
+// AI Chat Types (Critical Updates)
+// ==========================================
+
+// 요청 파라미터 타입 정의
+export type CreateAiAnswerParams = {
+  body_part_id: number;
+  question: string;
+  previous_summary?: string;
+};
+
+// AI 응답 내부 데이터 타입
+export type AiAnswerData = {
+  id: number;
+  answer: string;
+  confidence_score: number;
+  created_at: string;
+  medical_context?: {
+    summary: string;
+    risk_level: number;
   };
 };
+
+// API 응답 래퍼 타입
+export type AiAnswerResponse = {
+  success: boolean;
+  data: AiAnswerData;
+};
+
+// ==========================================
+// API Client Logic
+// ==========================================
 
 const buildApiUrl = (path: string) => {
   if (path.startsWith("/api/auth")) {
     return path;
   }
-
   if (!API_BASE_URL) {
     return path;
   }
@@ -190,7 +228,7 @@ const apiRequest = async <T>(
 ): Promise<ApiResult<T>> => {
   try {
     const response = await fetch(buildApiUrl(path), {
-      credentials: "include",
+      credentials: "include", // 쿠키(세션) 전송을 위해 필수
       ...init,
     });
     const data = await safeJson<T>(response);
@@ -208,6 +246,10 @@ const apiRequest = async <T>(
     };
   }
 };
+
+// ==========================================
+// API Functions
+// ==========================================
 
 export const fetchCurrentUser = () => apiRequest<UserResponse>("/api/users/me");
 
@@ -236,7 +278,9 @@ export const fetchSearchHome = () =>
 
 export const fetchSearchResults = (keyword: string) => {
   const searchParams = new URLSearchParams({ keyword });
-  return apiRequest<SearchResponse>(`/api/common/search?${searchParams.toString()}`);
+  return apiRequest<SearchResponse>(
+    `/api/common/search?${searchParams.toString()}`,
+  );
 };
 
 export const fetchBodyPartBookmarks = () =>
@@ -289,12 +333,17 @@ export const fetchPlaces = (params: {
   if (params.radius) {
     searchParams.set("radius", params.radius.toString());
   }
-  return apiRequest<PlacesResponse>(`/api/maps/places?${searchParams.toString()}`);
+  return apiRequest<PlacesResponse>(
+    `/api/maps/places?${searchParams.toString()}`,
+  );
 };
 
 export const clearAiContext = () =>
-  apiRequest<{ success: boolean }>("/api/ai-chats/context", { method: "DELETE" });
+  apiRequest<{ success: boolean }>("/api/ai-chats/context", {
+    method: "DELETE",
+  });
 
+// Auth Related
 export type CsrfTokenResponse = {
   csrfToken: string;
 };
@@ -317,20 +366,12 @@ export const signOutUser = async (callbackUrl: string) => {
   });
 };
 
-export type AiQueryResponse = {
-  success: boolean;
-  data: {
-    id: number;
-    answer: string;
-    confidence_score: number;
-    created_at: string;
-  };
-};
+// AI Chat Function (Updated Return Type)
 export const createAiAnswer = (
-  payload: { body_part_id: number; question: string },
-  signal?: AbortSignal
+  payload: CreateAiAnswerParams,
+  signal?: AbortSignal,
 ) =>
-  apiRequest<AiQueryResponse>("/api/ai-chats/queries", { 
+  apiRequest<AiAnswerResponse>("/api/ai-chats/queries", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

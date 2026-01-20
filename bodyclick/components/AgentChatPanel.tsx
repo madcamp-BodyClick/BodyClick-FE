@@ -29,6 +29,7 @@ import {
   type BodyPartKey,
   type ChatMessage,
 } from "../store/useBodyMapStore";
+import TypingBubble from "@/components/TypingBubble";
 
 const SYSTEM_KEYWORDS: Record<string, string> = {
   MUSCULO: "정형외과",
@@ -109,6 +110,7 @@ const AgentChatPanel = () => {
   const [isPromptDismissed, setIsPromptDismissed] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string>("");
   const [nearbyHospitals, setNearbyHospitals] = useState<PlaceResult[]>([]);
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -117,6 +119,7 @@ const AgentChatPanel = () => {
 
   useEffect(() => {
     setInput("");
+    setAiSummary("");
   }, [selectedBodyPart]);
 
   useEffect(() => {
@@ -207,6 +210,9 @@ const AgentChatPanel = () => {
   }, [messages]);
 
   const summarySnippet = useMemo(() => {
+    if (aiSummary) {
+      return aiSummary;
+    }
     if (!lastAssistantMessage) {
       return null;
     }
@@ -215,8 +221,9 @@ const AgentChatPanel = () => {
       return trimmed;
     }
     return `${trimmed.slice(0, 120)}...`;
-  }, [lastAssistantMessage]);
+  }, [aiSummary, lastAssistantMessage]);
 
+  // [수정] 스크롤 자동 이동: 메시지가 추가되거나 타이핑 중일 때도 하단으로 이동
   useLayoutEffect(() => {
     if (!threadRef.current) {
       return;
@@ -226,7 +233,7 @@ const AgentChatPanel = () => {
       target.scrollTop = target.scrollHeight;
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [messages.length]);
+  }, [messages.length, isSending]); // isSending 추가
 
   useEffect(() => {
     return () => {
@@ -315,20 +322,25 @@ const AgentChatPanel = () => {
         {
           body_part_id: bodyPartId,
           question,
+          previous_summary: aiSummary,
         },
         controller.signal,
       );
 
-      // ✅ 수정된 디버깅 코드 (statusText 제거됨)
       if (!response.ok || !response.data?.success) {
-        console.error("🚨 API 요청 실패 상세 정보:", {
-          status: response.status, // 401, 404, 500 등 숫자 코드
-          data: response.data,     // 서버가 보낸 에러 메시지 데이터
-        });
+        // 스크린샷 에러에 대응하여 상태 코드 로깅
+        console.error(`🚨 API Error ${response.status}:`, response.data);
+        if (response.status === 401) {
+            alert("세션이 만료되었습니다. 다시 로그인해주세요.");
+            // 필요 시 로그아웃 처리 로직 추가
+        }
         throw new Error(`API Error: ${response.status}`);
       }
 
-      const { answer, confidence_score } = response.data.data;
+      const { answer, confidence_score, medical_context } = response.data.data;
+      if (medical_context?.summary) {
+        setAiSummary(medical_context.summary);
+      }
       const confidence =
         typeof confidence_score === "number"
           ? Math.max(0, Math.min(1, confidence_score))
@@ -368,6 +380,7 @@ const AgentChatPanel = () => {
     resolveChatBodyPartId,
     selectedBodyPart,
     systemLabel,
+    aiSummary,
   ]);
 
   const handleKeyDown = useCallback(
@@ -395,7 +408,7 @@ const AgentChatPanel = () => {
     try {
       await clearAiContext();
     } catch {
-      // Ignore reset failures to avoid blocking the local UX.
+      // Ignore reset failures
     }
     resetSymptoms(selectedBodyPart);
     setIsPromptDismissed(false);
@@ -451,6 +464,7 @@ const AgentChatPanel = () => {
         onClick={() => setIsModalOpen(false)}
       />
       <div className="relative z-10 flex h-[88vh] w-[94vw] max-w-[1240px] flex-col overflow-hidden rounded-[32px] border border-bm-border bg-bm-panel shadow-[0_25px_80px_rgba(0,0,0,0.55)] animate-[fade-up_0.25s_ease-out]">
+        {/* ... (모달 내용은 기존과 동일) ... */}
         <div className="relative px-6 py-5">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
           <div className="relative flex items-start justify-between gap-4">
@@ -598,30 +612,38 @@ const AgentChatPanel = () => {
               첫 질문을 입력하면 상담이 시작됩니다.
             </div>
           ) : (
-            messages.map((message) => {
-              const isUser = message.role === "user";
-              return (
-                <div
-                  key={message.id}
-                  className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                >
+            <>
+              {messages.map((message) => {
+                const isUser = message.role === "user";
+                return (
                   <div
-                    className={`max-w-[85%] rounded-2xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                      isUser
-                        ? "border-bm-border bg-bm-surface-soft text-bm-text"
-                        : "border-bm-accent-faint bg-bm-accent-soft text-bm-text"
-                    }`}
+                    key={message.id}
+                    className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                   >
-                    {!isUser ? (
-                      <p className="mb-1 text-[11px] font-semibold text-bm-muted">
-                        {agent.label}
-                      </p>
-                    ) : null}
-                    {message.content}
+                    <div
+                      className={`max-w-[85%] rounded-2xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                        isUser
+                          ? "border-bm-border bg-bm-surface-soft text-bm-text"
+                          : "border-bm-accent-faint bg-bm-accent-soft text-bm-text"
+                      }`}
+                    >
+                      {!isUser ? (
+                        <p className="mb-1 text-[11px] font-semibold text-bm-muted">
+                          {agent.label}
+                        </p>
+                      ) : null}
+                      {message.content}
+                    </div>
                   </div>
+                );
+              })}
+              {/* 👇 [추가] 로딩 중일 때 타이핑 인디케이터 표시 */}
+              {isSending && (
+                <div className="flex justify-start">
+                  <TypingBubble />
                 </div>
-              );
-            })
+              )}
+            </>
           )}
         </div>
 
@@ -658,6 +680,7 @@ const AgentChatPanel = () => {
         </div>
 
         {hasConversation ? (
+          // ... (이후 증상 확정 및 병원 추천 UI는 기존과 동일) ...
           !isSymptomConfirmed ? (
             <section className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">

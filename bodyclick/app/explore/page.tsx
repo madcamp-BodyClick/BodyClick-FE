@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bookmark, Search, User } from "lucide-react";
+import { Bookmark, Search, User, Loader2 } from "lucide-react"; // Loader2 아이콘 추가
 import InfoPanel from "../../components/InfoPanel";
 import Stage3D from "../../components/Stage3D";
 import SystemLayerSelector from "../../components/SystemLayerSelector";
@@ -49,16 +49,21 @@ const ExplorePage = () => {
   );
   const setBodyPartId = useBodyMapStore((state) => state.setBodyPartId);
   const setBodyPartLabel = useBodyMapStore((state) => state.setBodyPartLabel);
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+
   const [profileDraft, setProfileDraft] = useState({
     name: "",
     gender: "",
     birthdate: "",
   });
+  // [추가] 프로필 저장 로딩 상태
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSort, setSearchSort] = useState<"recent" | "popular">("recent");
@@ -67,14 +72,7 @@ const ExplorePage = () => {
   const [searchResults, setSearchResults] = useState<PartOption[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  const profileInitial = useMemo(() => {
-    const name = user?.name?.trim();
-    if (!name) {
-      return "U";
-    }
-    return name[0].toUpperCase();
-  }, [user?.name]);
-  const hasProfileName = Boolean(user?.name?.trim());
+  // [제거] 불필요한 profileInitial 변수 제거됨
 
   useEffect(() => {
     if (!user) {
@@ -185,6 +183,7 @@ const ExplorePage = () => {
     [getBodyPartLabel, getSystemLabel],
   );
 
+  // [수정] 검색 로직: Race Condition 방지 및 클린업 강화
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
@@ -192,29 +191,46 @@ const ExplorePage = () => {
       setIsSearching(false);
       return;
     }
+
+    let isCancelled = false; // 클린업 플래그
+
     const handle = window.setTimeout(async () => {
       setIsSearching(true);
-      const response = await fetchSearchResults(trimmed);
-      if (!response.ok || !response.data?.success) {
-        setSearchResults([]);
-        setIsSearching(false);
-        return;
+      try {
+        const response = await fetchSearchResults(trimmed);
+        
+        if (isCancelled) return; // 컴포넌트 언마운트나 쿼리 변경 시 중단
+
+        if (!response.ok || !response.data?.success) {
+          setSearchResults([]);
+          return;
+        }
+
+        const mapped = response.data.data
+          .map((item) => {
+            const code = getBodyPartCodeByLabel(item.name);
+            if (!code) {
+              return null;
+            }
+            setBodyPartId(code, item.id);
+            setBodyPartLabel(code, item.name);
+            return buildPartOption(code);
+          })
+          .filter((item): item is PartOption => item !== null); // 타입 가드 적용
+
+        setSearchResults(mapped);
+      } catch (error) {
+        console.error("Search failed:", error);
+        if (!isCancelled) setSearchResults([]);
+      } finally {
+        if (!isCancelled) setIsSearching(false);
       }
-      const mapped = response.data.data
-        .map((item) => {
-          const code = getBodyPartCodeByLabel(item.name);
-          if (!code) {
-            return null;
-          }
-          setBodyPartId(code, item.id);
-          setBodyPartLabel(code, item.name);
-          return buildPartOption(code);
-        })
-        .filter(Boolean) as PartOption[];
-      setSearchResults(mapped);
-      setIsSearching(false);
     }, 250);
-    return () => window.clearTimeout(handle);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(handle);
+    };
   }, [
     buildPartOption,
     getBodyPartCodeByLabel,
@@ -238,8 +254,9 @@ const ExplorePage = () => {
           systemLabel: getSystemLabel(system),
         };
       })
-      .filter(Boolean) as PartOption[];
+      .filter((item): item is PartOption => item !== null);
   }, [getBodyPartLabel, getSystemLabel]);
+
   const filteredParts = useMemo(() => {
     const query = searchQuery.trim();
     if (query && searchResults.length > 0) {
@@ -314,7 +331,7 @@ const ExplorePage = () => {
         }
         return buildPartOption(code);
       })
-      .filter(Boolean) as PartOption[];
+      .filter((item): item is PartOption => item !== null);
 
     const recentOptions =
       recentHistory.length > 0
@@ -326,10 +343,10 @@ const ExplorePage = () => {
               }
               return buildPartOption(code);
             })
-            .filter(Boolean)
+            .filter((item): item is PartOption => item !== null)
         : recentBodyParts
             .map((partId) => buildPartOption(partId))
-            .filter(Boolean);
+            .filter((item): item is PartOption => item !== null);
 
     if (searchSort === "popular" && popularOptions.length > 0) {
       return popularOptions.slice(0, 8);
@@ -347,6 +364,7 @@ const ExplorePage = () => {
     recentHistory,
     searchSort,
   ]);
+
   const handleSelectPart = (partId: BodyPartKey) => {
     const part = BODY_PART_LOOKUP[partId];
     if (!part) {
@@ -356,6 +374,42 @@ const ExplorePage = () => {
     setBodyPart(partId);
     setIsSearchOpen(false);
     setSearchQuery("");
+  };
+
+  // [추가] 프로필 저장 핸들러
+  const handleSaveProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    // 유효성 검사 (성별 필수)
+    if (!profileDraft.gender) {
+      alert("성별을 선택해주세요.");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const response = await updateUserProfile({
+        name: profileDraft.name,
+        gender: profileDraft.gender as "MALE" | "FEMALE",
+        birth_date: profileDraft.birthdate,
+      });
+
+      if (response.ok && response.data?.success) {
+        updateProfile({
+          name: profileDraft.name,
+          gender: profileDraft.gender as "MALE" | "FEMALE",
+          birthdate: profileDraft.birthdate,
+        });
+        setIsEditingProfile(false);
+      } else {
+        alert("저장에 실패했습니다. 다시 시도해주세요.");
+      }
+    } catch (error) {
+      console.error("Profile update failed:", error);
+      alert("오류가 발생했습니다.");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   return (
@@ -378,7 +432,10 @@ const ExplorePage = () => {
               <p className="hidden text-xs text-bm-muted lg:block">
                 의료 인사이트 인터페이스
               </p>
-              <div className="relative flex items-center gap-2" ref={searchPanelRef}>
+              <div
+                className="relative flex items-center gap-2"
+                ref={searchPanelRef}
+              >
                 {isAuthenticated ? (
                   <div className="flex items-center gap-2">
                     <div className="relative" ref={profileMenuRef}>
@@ -393,141 +450,133 @@ const ExplorePage = () => {
                       </button>
                       {isProfileOpen ? (
                         <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-bm-border bg-bm-panel px-4 py-3 text-xs text-bm-text shadow-lg">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bm-muted">
-                            내 프로필
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setIsEditingProfile((prev) => !prev)
-                            }
-                            className="rounded-full border border-bm-border bg-bm-panel-soft px-2 py-0.5 text-[10px] text-bm-muted transition hover:text-bm-text"
-                          >
-                            {isEditingProfile ? "닫기" : "프로필 수정"}
-                          </button>
-                        </div>
-
-                        {!isEditingProfile ? (
-                          <div className="mt-2 space-y-1">
-                            <p className="text-sm font-semibold">{user?.name}</p>
-                            <p className="text-[11px] text-bm-muted">
-                              {user?.email}
+                          <div className="flex items-center justify-between">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bm-muted">
+                              내 프로필
                             </p>
-                            <p className="text-[11px] text-bm-muted">
-                              {user?.gender === "MALE"
-                                ? "남"
-                                : user?.gender === "FEMALE"
-                                  ? "여"
-                                  : "성별 미지정"}
-                            </p>
-                            <p className="text-[11px] text-bm-muted">
-                              {user?.birthdate || "생년월일 미지정"}
-                            </p>
-                          </div>
-                        ) : (
-                          <form
-                            className="mt-3 space-y-2"
-                            onSubmit={async (event) => {
-                              event.preventDefault();
-                              const response = await updateUserProfile({
-                                name: profileDraft.name,
-                                gender: profileDraft.gender as "MALE" | "FEMALE",
-                                birth_date: profileDraft.birthdate,
-                              });
-                              if (response.ok && response.data?.success) {
-                                updateProfile({
-                                  name: profileDraft.name,
-                                  gender: profileDraft.gender as "MALE" | "FEMALE",
-                                  birthdate: profileDraft.birthdate,
-                                });
-                                setIsEditingProfile(false);
-                                return;
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setIsEditingProfile((prev) => !prev)
                               }
-                              alert("저장 실패");
-                            }}
-                          >
-                            <label className="block">
-                              <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
-                                이름
-                              </span>
-                              <input
-                                type="text"
-                                value={profileDraft.name}
-                                onChange={(event) =>
+                              className="rounded-full border border-bm-border bg-bm-panel-soft px-2 py-0.5 text-[10px] text-bm-muted transition hover:text-bm-text"
+                            >
+                              {isEditingProfile ? "닫기" : "프로필 수정"}
+                            </button>
+                          </div>
+
+                          {!isEditingProfile ? (
+                            <div className="mt-2 space-y-1">
+                              <p className="text-sm font-semibold">
+                                {user?.name}
+                              </p>
+                              <p className="text-[11px] text-bm-muted">
+                                {user?.email}
+                              </p>
+                              <p className="text-[11px] text-bm-muted">
+                                {user?.gender === "MALE"
+                                  ? "남"
+                                  : user?.gender === "FEMALE"
+                                    ? "여"
+                                    : "성별 미지정"}
+                              </p>
+                              <p className="text-[11px] text-bm-muted">
+                                {user?.birthdate || "생년월일 미지정"}
+                              </p>
+                            </div>
+                          ) : (
+                            <form
+                              className="mt-3 space-y-2"
+                              onSubmit={handleSaveProfile}
+                            >
+                              <label className="block">
+                                <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
+                                  이름
+                                </span>
+                                <input
+                                  type="text"
+                                  value={profileDraft.name}
+                                  onChange={(event) =>
+                                    setProfileDraft((prev) => ({
+                                      ...prev,
+                                      name: event.target.value,
+                                    }))
+                                  }
+                                  className="mt-1 h-8 w-full rounded-lg border border-bm-border bg-bm-panel-soft px-2 text-xs text-bm-text"
+                                />
+                              </label>
+                              <GenderSelect
+                                label="성별"
+                                value={profileDraft.gender}
+                                onChange={(gender) =>
                                   setProfileDraft((prev) => ({
                                     ...prev,
-                                    name: event.target.value,
+                                    gender,
                                   }))
                                 }
-                                className="mt-1 h-8 w-full rounded-lg border border-bm-border bg-bm-panel-soft px-2 text-xs text-bm-text"
+                                size="compact"
+                                portal={false}
                               />
-                            </label>
-                            <GenderSelect
-                              label="성별"
-                              value={profileDraft.gender}
-                              onChange={(gender) =>
-                                setProfileDraft((prev) => ({
-                                  ...prev,
-                                  gender,
-                                }))
-                              }
-                              size="compact"
-                              portal={false}
-                            />
-                            <BirthDatePicker
-                              label="생년월일"
-                              value={profileDraft.birthdate}
-                              onChange={(birthdate) =>
-                                setProfileDraft((prev) => ({
-                                  ...prev,
-                                  birthdate,
-                                }))
-                              }
-                              size="compact"
-                              portal={false}
-                            />
-                            <div className="mt-1 flex gap-2">
-                              <button
-                                type="submit"
-                                className="flex-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                              >
-                                저장
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsProfileOpen(false);
-                                  setIsEditingProfile(false);
-                                }}
-                                className="flex-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                              >
-                                취소
-                              </button>
-                            </div>
-                          </form>
-                        )}
+                              <BirthDatePicker
+                                label="생년월일"
+                                value={profileDraft.birthdate}
+                                onChange={(birthdate) =>
+                                  setProfileDraft((prev) => ({
+                                    ...prev,
+                                    birthdate,
+                                  }))
+                                }
+                                size="compact"
+                                portal={false}
+                              />
+                              <div className="mt-1 flex gap-2">
+                                <button
+                                  type="submit"
+                                  disabled={isSavingProfile}
+                                  className="flex flex-1 items-center justify-center gap-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text disabled:opacity-50"
+                                >
+                                  {isSavingProfile && (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  )}
+                                  {isSavingProfile ? "저장 중" : "저장"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSavingProfile}
+                                  onClick={() => {
+                                    setIsProfileOpen(false);
+                                    setIsEditingProfile(false);
+                                  }}
+                                  className="flex-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text disabled:opacity-50"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </form>
+                          )}
 
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await signOutUser(`${window.location.origin}/login`);
-                            } catch (error) {
-                              console.error("Sign out failed:", error);
-                            } finally {
-                              clearUser();
-                              setIsProfileOpen(false);
-                              setIsEditingProfile(false);
-                              router.replace("/login");
-                              router.refresh();
-                            }
-                          }}
-                          className="mt-3 w-full rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                        >
-                          로그아웃
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await signOutUser(
+                                  `${window.location.origin}/login`,
+                                );
+                              } catch (error) {
+                                console.error("Sign out failed:", error);
+                              } finally {
+                                clearUser();
+                                setIsProfileOpen(false);
+                                setIsEditingProfile(false);
+                                router.replace("/login");
+                                router.refresh();
+                              }
+                            }}
+                            className="mt-3 w-full rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
+                          >
+                            로그아웃
+                          </button>
+                        </div>
                       ) : null}
                     </div>
                     <Link
@@ -615,8 +664,9 @@ const ExplorePage = () => {
                     </div>
                     <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
                       {isSearching ? (
-                        <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
-                          검색 중입니다.
+                        <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          검색 중입니다...
                         </div>
                       ) : filteredParts.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
