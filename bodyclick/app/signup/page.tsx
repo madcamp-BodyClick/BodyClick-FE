@@ -68,7 +68,7 @@ const SignupPage = () => {
     if (response.ok && response.data?.success) {
       updateProfile({
         name: googleAccount.name,
-        gender,
+        gender: gender as "MALE" | "FEMALE" | null,
         birthdate,
       });
       router.push("/explore");
