@@ -319,8 +319,13 @@ const AgentChatPanel = () => {
         controller.signal,
       );
 
+      // ✅ 수정된 디버깅 코드 (statusText 제거됨)
       if (!response.ok || !response.data?.success) {
-        throw new Error(`API error: ${response.status}`);
+        console.error("🚨 API 요청 실패 상세 정보:", {
+          status: response.status, // 401, 404, 500 등 숫자 코드
+          data: response.data,     // 서버가 보낸 에러 메시지 데이터
+        });
+        throw new Error(`API Error: ${response.status}`);
       }
 
       const { answer, confidence_score } = response.data.data;

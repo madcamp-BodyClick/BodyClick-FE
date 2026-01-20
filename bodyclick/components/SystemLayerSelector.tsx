@@ -14,6 +14,12 @@ const SystemLayerSelector = () => {
   const systems = useBodyMapStore((state) => state.systems);
   const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
 
+  // [수정] 화면에 보이는 이름(label)을 기준으로 중복 제거
+  const uniqueSystems = (systems || []).filter(
+    (system, index, self) =>
+      index === self.findIndex((t) => t.label === system.label)
+  );
+
   return (
     <section className="flex flex-col gap-4">
       <div>
@@ -25,12 +31,12 @@ const SystemLayerSelector = () => {
         </p>
       </div>
       <div className="flex gap-2 lg:flex-col">
-        {systems.map((system, index) => {
+        {uniqueSystems.map((system, index) => {
           const isActive = selectedSystem === system.id;
           const layerOpacity = getSystemLayerOpacity(selectedSystem, system.id);
           return (
             <button
-              key={system.id}
+              key={system.id} // 주의: 중복된 항목 중 첫 번째의 ID를 사용합니다
               type="button"
               onClick={() => {
                 requestCameraReset();

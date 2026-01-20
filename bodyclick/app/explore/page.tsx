@@ -438,7 +438,7 @@ const ExplorePage = () => {
                               if (response.ok && response.data?.success) {
                                 updateProfile({
                                   name: profileDraft.name,
-                                  gender: profileDraft.gender,
+                                  gender: profileDraft.gender as "MALE" | "FEMALE",
                                   birthdate: profileDraft.birthdate,
                                 });
                                 setIsEditingProfile(false);
@@ -597,16 +597,20 @@ const ExplorePage = () => {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {recommendedParts.map((part) => (
-                          <button
-                            key={part.id}
-                            type="button"
-                            onClick={() => handleSelectPart(part.id)}
-                            className="rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                          >
-                            {part.label}
-                          </button>
-                        ))}
+                        {recommendedParts.map((part) => {
+                          if (!part) return null;
+
+                          return (
+                            <button
+                              key={part.id}
+                              type="button"
+                              onClick={() => handleSelectPart(part.id)}
+                              className="rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
+                            >
+                              {part.label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                     <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">

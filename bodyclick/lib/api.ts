@@ -292,17 +292,6 @@ export const fetchPlaces = (params: {
   return apiRequest<PlacesResponse>(`/api/maps/places?${searchParams.toString()}`);
 };
 
-export const createAiAnswer = (
-  payload: { body_part_id: number; question: string },
-  signal?: AbortSignal,
-) =>
-  apiRequest<AiAnswerResponse>("/api/ai-chats/queries", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal,
-  });
-
 export const clearAiContext = () =>
   apiRequest<{ success: boolean }>("/api/ai-chats/context", { method: "DELETE" });
 
@@ -327,3 +316,23 @@ export const signOutUser = async (callbackUrl: string) => {
     }).toString(),
   });
 };
+
+export type AiQueryResponse = {
+  success: boolean;
+  data: {
+    id: number;
+    answer: string;
+    confidence_score: number;
+    created_at: string;
+  };
+};
+export const createAiAnswer = (
+  payload: { body_part_id: number; question: string },
+  signal?: AbortSignal
+) =>
+  apiRequest<AiQueryResponse>("/api/ai-chats/queries", { 
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });

@@ -764,7 +764,8 @@ const Stage3D = () => {
     ? getBodyPartLabel(selectedBodyPart)
     : null;
   const systemLabel = selectedSystem ? getSystemLabel(selectedSystem) : "전신";
-  const barWidth = parts.length <= 1 ? 180 : parts.length <= 3 ? 300 : 480;
+  const count = parts?.length || 0; 
+  const barWidth = count <= 1 ? 180 : count <= 3 ? 300 : 480;
 
   return (
     <section className="relative h-[68vh] min-h-[420px] w-full overflow-hidden rounded-[32px] border border-bm-border bg-bm-surface-soft animate-[rise-in_0.9s_ease-out] lg:h-[76vh] lg:min-h-[520px]">
@@ -879,25 +880,28 @@ const Stage3D = () => {
           className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-[24px] border border-bm-border bg-bm-panel-soft px-5 py-3 text-xs text-bm-muted backdrop-blur"
           style={{ width: `${barWidth}px` }}
         >
-          {parts.map((part) => {
-            const isActive = selectedBodyPart === part.id;
-            const dimmed = selectedBodyPart && !isActive;
-            return (
-              <button
-                key={part.id}
-                type="button"
-                onClick={() => setBodyPart(part.id)}
-                aria-pressed={isActive}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  isActive
-                    ? "bg-bm-accent-soft text-bm-text"
-                    : "text-bm-muted hover:text-bm-text"
-                } ${dimmed ? "opacity-50" : "opacity-100"}`}
-              >
-                {getBodyPartLabel(part.id)}
-              </button>
-            );
-          })}
+          {(parts || []).filter((part, index, self) => 
+              index === self.findIndex((t) => getBodyPartLabel(t.id) === getBodyPartLabel(part.id))
+            )
+            .map((part) => {
+              const isActive = selectedBodyPart === part.id;
+              const dimmed = selectedBodyPart && !isActive;
+              return (
+                <button
+                  key={part.id}
+                  type="button"
+                  onClick={() => setBodyPart(part.id)}
+                  aria-pressed={isActive}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                    isActive
+                      ? "bg-bm-accent-soft text-bm-text"
+                      : "text-bm-muted hover:text-bm-text"
+                  } ${dimmed ? "opacity-50" : "opacity-100"}`}
+                >
+                  {getBodyPartLabel(part.id)}
+                </button>
+              );
+            })}
         </div>
       ) : null}
     </section>
