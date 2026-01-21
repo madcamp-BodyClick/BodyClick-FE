@@ -242,7 +242,7 @@ const InfoPanel = () => {
 
     try {
       setIsLoadingDisease(true);
-      const response = await fetch(`/diseases/${diseaseId}`);
+      const response = await fetch(`api/diseases/${diseaseId}`);
       
       if (!response.ok) {
         throw new Error("Failed to fetch");
