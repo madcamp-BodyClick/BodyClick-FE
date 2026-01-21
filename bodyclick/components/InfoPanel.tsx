@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Bookmark, MapPin, X } from "lucide-react";
+import { Bookmark, X, AlertCircle, Activity, RefreshCw } from "lucide-react"; // [수정] RefreshCw 아이콘 추가
 import dynamic from "next/dynamic";
 
 import AgentChatPanel from "./AgentChatPanel";
@@ -23,6 +23,22 @@ import {
   useBodyMapStore,
   type InsightTab,
 } from "../store/useBodyMapStore";
+
+// 질환 상세 데이터 타입 정의
+interface DiseaseDetail {
+  id: number;
+  body_part_id: number;
+  name: string;
+  description: string;
+  common_symptoms: string;
+  severity_level: number; // 1~5
+  requires_medical_attention: boolean;
+}
+
+interface DiseaseApiResponse {
+  success: boolean;
+  data: DiseaseDetail;
+}
 
 // KakaoMap dynamic import
 const KakaoMap = dynamic(
@@ -85,6 +101,10 @@ const InfoPanel = () => {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
 
+  // 질환 상세 정보 State
+  const [selectedDisease, setSelectedDisease] = useState<DiseaseDetail | null>(null);
+  const [isLoadingDisease, setIsLoadingDisease] = useState(false);
+
   const part = selectedBodyPart ? BODY_PART_LOOKUP[selectedBodyPart] : null;
   const agent = getAgentProfileForPart(selectedBodyPart);
   const partLabel = selectedBodyPart ? getBodyPartLabel(selectedBodyPart) : null;
@@ -95,7 +115,6 @@ const InfoPanel = () => {
     return bodyPartBookmarks.some((item) => item.bodyPartId === detail.id);
   }, [bodyPartBookmarks, detail?.id]);
 
-  // 5곳 모두 표시
   const recommendedHospitals = useMemo(() => {
     return nearbyHospitals; 
   }, [nearbyHospitals]);
@@ -107,7 +126,7 @@ const InfoPanel = () => {
 
   const roleItems = normalizeStringList(detail?.keyRoles);
   const signalItems = normalizeStringList(detail?.observationPoints);
-  const conditionItems = diseases.map((item) => item.name);
+
   const summaryText = isLoadingDetail
     ? "정보를 불러오는 중입니다."
     : detail?.description ?? "설명 정보가 없습니다.";
@@ -127,6 +146,7 @@ const InfoPanel = () => {
       setDetail(null);
       setDiseases([]);
       setIsLoadingDetail(false);
+      setSelectedDisease(null); 
       return;
     }
     let isActive = true;
@@ -145,33 +165,48 @@ const InfoPanel = () => {
     return () => { isActive = false; };
   }, [loadBodyPartDetail, loadBodyPartDiseases, selectedBodyPart]);
 
-  useEffect(() => {
+  // [수정] 병원 검색 로직을 함수로 분리 (재사용을 위해)
+  const loadPlaces = useCallback(async () => {
     if (!part || !isAuthenticated) {
       setNearbyHospitals([]);
       setIsLoadingHospitals(false);
       return;
     }
-    let isActive = true;
-    const loadPlaces = async () => {
-      setIsLoadingHospitals(true);
+
+    setIsLoadingHospitals(true);
+    try {
+      // 위치 정보를 가져옴 (초기 로딩 시 대전 위치를 정확히 가져오기 위함)
       const location = await getUserLocation();
       const keyword = SYSTEM_KEYWORDS[part.system] ?? "병원";
+      
       const response = await fetchPlaces({
         lat: location.lat,
         lng: location.lng,
         keyword,
       });
-      if (!isActive) return;
+
       if (response.ok && response.data?.success) {
         setNearbyHospitals(response.data.data);
       } else {
         setNearbyHospitals([]);
       }
+    } catch (error) {
+      console.error("Failed to load hospitals:", error);
+      setNearbyHospitals([]);
+    } finally {
       setIsLoadingHospitals(false);
-    };
-    loadPlaces();
-    return () => { isActive = false; };
+    }
   }, [isAuthenticated, part]);
+
+  // [수정] useEffect에서 loadPlaces 호출
+  useEffect(() => {
+    loadPlaces();
+  }, [loadPlaces]);
+
+  // [추가] 수동으로 위치 새로고침하는 핸들러
+  const handleRefreshLocation = async () => {
+    await loadPlaces();
+  };
 
   useEffect(() => { setIsMounted(true); }, []);
 
@@ -197,6 +232,31 @@ const InfoPanel = () => {
       return;
     }
     setActiveTab(tabId);
+  };
+
+  const handleDiseaseClick = async (diseaseId: number) => {
+    if (selectedDisease?.id === diseaseId) {
+      setSelectedDisease(null);
+      return;
+    }
+
+    try {
+      setIsLoadingDisease(true);
+      const response = await fetch(`/diseases/${diseaseId}`);
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch");
+      }
+      
+      const json: DiseaseApiResponse = await response.json();
+      if (json.success) {
+        setSelectedDisease(json.data);
+      }
+    } catch (error) {
+      console.error("질환 정보 로딩 실패:", error);
+    } finally {
+      setIsLoadingDisease(false);
+    }
   };
 
   const handleTogglePartBookmark = async () => {
@@ -302,7 +362,7 @@ const InfoPanel = () => {
             </div>
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-6">
+          <div className="relative flex h-full flex-col gap-6">
             <header className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-bm-muted">의료 인사이트</p>
               <div className="flex items-start justify-between gap-3">
@@ -351,12 +411,26 @@ const InfoPanel = () => {
                 <section className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">추천 병원</p>
-                    <span className="text-[11px] text-bm-muted">{hospitalBookmarks.length}곳 저장됨</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-bm-muted">{hospitalBookmarks.length}곳 저장됨</span>
+                      {/* [추가] 위치 새로고침 버튼 */}
+                      <button 
+                        onClick={handleRefreshLocation} 
+                        disabled={isLoadingHospitals}
+                        className="flex items-center justify-center p-1 rounded-full bg-bm-panel border border-bm-border hover:border-bm-accent text-bm-muted hover:text-bm-accent transition-colors disabled:opacity-50"
+                        title="내 위치로 다시 검색"
+                      >
+                        <RefreshCw size={12} className={isLoadingHospitals ? "animate-spin" : ""} />
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="mt-3 space-y-2 max-h-[280px] overflow-y-auto pr-1">
                     {isLoadingHospitals ? (
-                      <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">주변 병원을 검색 중입니다.</div>
+                      <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted flex items-center justify-center gap-2">
+                        <div className="h-3 w-3 animate-spin rounded-full border border-bm-muted border-t-bm-accent"></div>
+                        주변 병원을 검색 중입니다...
+                      </div>
                     ) : recommendedHospitals.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">로그인 후 주변 병원을 추천해 드립니다.</div>
                     ) : (
@@ -375,7 +449,6 @@ const InfoPanel = () => {
                               <p className="mt-1 text-[11px] text-bm-muted">{hospital.road_address || hospital.address}</p>
                             </div>
                             <div className="flex items-center gap-2">
-                                {/* 👇 [수정] 평점 표시 div 제거됨 */}
                                 <button type="button" onClick={(e) => { e.stopPropagation(); handleToggleHospitalBookmark(hospital); }} className={`flex h-8 w-8 items-center justify-center rounded-full border border-bm-border bg-bm-panel-soft transition ${isBookmarked ? "text-bm-accent" : "text-bm-muted hover:text-bm-text"}`} aria-label="병원 북마크">
                                   <Bookmark className={`h-3.5 w-3.5 ${isBookmarked ? "fill-bm-accent" : ""}`} />
                                 </button>
@@ -393,12 +466,88 @@ const InfoPanel = () => {
               <div className="rounded-2xl border border-bm-border bg-bm-panel-soft p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">대표 질환</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {conditionItems.length > 0 ? conditionItems.map((item) => <span key={item} className="rounded-full border border-bm-border px-3 py-2 text-xs text-bm-text">{item}</span>) : <span className="text-xs text-bm-muted">대표 질환 정보가 없습니다.</span>}
+                  {diseases.length > 0 ? (
+                    diseases.map((item) => (
+                      <button 
+                        key={item.id} 
+                        onClick={() => handleDiseaseClick(item.id)}
+                        className="rounded-full border border-bm-border px-3 py-2 text-xs text-bm-text hover:bg-bm-accent-soft hover:border-bm-accent transition-colors"
+                      >
+                        {item.name}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-xs text-bm-muted">대표 질환 정보가 없습니다.</span>
+                  )}
                 </div>
               </div>
             ) : null}
 
             {activeTab === "ai" ? <AgentChatPanel /> : null}
+
+            {/* 질환 상세 정보 모달 */}
+            {selectedDisease && (
+              <div className="absolute inset-0 z-20 flex flex-col rounded-[28px] bg-bm-panel/95 p-6 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-xl font-bold text-bm-text">{selectedDisease.name}</h3>
+                      {selectedDisease.requires_medical_attention && (
+                        <span className="flex items-center gap-1 bg-red-500/10 text-red-500 text-[10px] px-2 py-0.5 rounded-full border border-red-500/20 font-medium">
+                          <AlertCircle size={10} /> 방문 필요
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedDisease(null)}
+                    className="p-1 -mr-2 -mt-2 hover:bg-bm-panel-soft rounded-full text-bm-muted hover:text-bm-text transition-colors"
+                    aria-label="닫기"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-6">
+                  <div>
+                    <p className="text-sm text-bm-text leading-relaxed whitespace-pre-line">
+                      {selectedDisease.description}
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-end mb-2">
+                      <span className="text-xs font-semibold text-bm-muted uppercase tracking-wider">위험도</span>
+                      <span className={`text-xs font-bold ${selectedDisease.severity_level >= 4 ? 'text-red-500' : 'text-blue-500'}`}>
+                        Level {selectedDisease.severity_level}
+                      </span>
+                    </div>
+                    <div className="flex gap-1 h-1.5">
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <div 
+                          key={level}
+                          className={`flex-1 rounded-full transition-all ${
+                            level <= selectedDisease.severity_level 
+                              ? (selectedDisease.severity_level >= 4 ? 'bg-red-500' : 'bg-blue-500') 
+                              : 'bg-bm-border'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-bm-panel-soft p-4 border border-bm-border">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Activity size={14} className="text-bm-accent" />
+                      <span className="text-xs font-semibold text-bm-muted">주요 증상</span>
+                    </div>
+                    <p className="text-sm text-bm-text leading-snug">
+                      {selectedDisease.common_symptoms}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </aside>
