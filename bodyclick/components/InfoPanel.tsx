@@ -250,7 +250,11 @@ const InfoPanel = () => {
           <div className="flex-1 min-h-0 px-6 pb-6">
             <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
               <section className="relative min-h-[260px] overflow-hidden rounded-2xl border border-bm-border bg-bm-panel-soft">
-                <KakaoMap center={selectedHospital.location} markers={nearbyHospitals} />
+                <KakaoMap 
+                  key={selectedHospital.place_id}
+                  center={selectedHospital.location} 
+                  markers={nearbyHospitals} 
+                />
               </section>
               <aside className="flex min-h-0 flex-col overflow-hidden">
                 <div className="mb-2 flex items-center justify-between text-[11px] text-bm-muted">

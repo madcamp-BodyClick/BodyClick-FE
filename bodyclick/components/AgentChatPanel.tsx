@@ -558,11 +558,6 @@ const AgentChatPanel = () => {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            {typeof hospital.rating === "number" ? (
-                              <div className="rounded-full border border-bm-border bg-bm-panel px-2 py-1 text-[10px] text-bm-muted">
-                                평점 {hospital.rating}
-                              </div>
-                            ) : null}
                             <button
                               type="button"
                               onClick={() => handleToggleHospitalBookmark(hospital)}
