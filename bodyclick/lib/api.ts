@@ -366,27 +366,28 @@ export const signOutUser = async (callbackUrl: string) => {
   });
 };
 
-export const recordBodyPartView = async (bodyPartId: string, type: 'view' | 'search' = 'view') => {
+export const recordBodyPartView = async (bodyPartId: number) => {
   try {
-    const response = await fetch('/api/common/search/home', { 
+    const response = await fetch('/api/common/history', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      // [중요] 백엔드 스키마에 맞춰 스네이크 케이스(body_part_id)로 전송
       body: JSON.stringify({
-        body_part_id: bodyPartId,
-        type: type,
-        timestamp: new Date().toISOString()
+        body_part_id: bodyPartId, 
       }),
     });
+
     if (!response.ok) {
       console.error(`History record failed: ${response.status}`);
       return null;
     }
-    
+
+    // 응답 파싱
     const text = await response.text();
     return text ? JSON.parse(text) : { success: true };
-    
+
   } catch (error) {
     console.error("Failed to record history:", error);
     return null;

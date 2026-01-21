@@ -551,8 +551,12 @@ const getOrganFromPoint = (
 // --- Main Stage3D Component ---
 
 const Stage3D = () => {
-  // [추가] 인증 정보 가져오기
   const { isAuthenticated } = useAuthStore();
+  
+  // [추가] Store에서 '영문 Key -> 숫자 ID' 매핑 정보 가져오기
+  // (Store에 bodyPartIds가 정의되어 있어야 합니다.)
+  const bodyPartIds = useBodyMapStore((state) => state.bodyPartIds);
+
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
   const cameraResetNonce = useBodyMapStore((state) => state.cameraResetNonce);
@@ -695,7 +699,7 @@ const Stage3D = () => {
     }
   }, [cameraResetNonce, selectedBodyPart, moveCameraToPart]);
 
-  // [수정] 3D 모델 클릭 시 히스토리 기록 추가
+  // [수정] 3D 모델 클릭 시 히스토리 기록 추가 (Key -> ID 변환 적용)
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
     const model = modelRef.current;
@@ -719,9 +723,22 @@ const Stage3D = () => {
     }
     setBodyPart(hit.storeKey);
 
-    // [추가] 로그인 상태라면 조회 기록 저장
+    // [수정] 백엔드에 기록 저장 (문자열 Key -> 숫자 ID 변환 후 전송)
     if (isAuthenticated) {
-      recordBodyPartView(hit.storeKey, 'view');
+        // 1. 클릭한 부위의 영문 키 (예: "heart")
+        const key = hit.storeKey;
+        
+        // 2. 스토어에서 매핑된 숫자 ID 찾기 (예: 101)
+        // (bodyPartIds가 Store에 없으면 undefined가 될 수 있으므로 체크)
+        const numericId = bodyPartIds ? bodyPartIds[key] : undefined;
+  
+        // 3. ID가 존재할 때만 API 호출
+        if (numericId) {
+          recordBodyPartView(numericId);
+        } else {
+          // 개발 단계에서 ID 누락 확인용 로그
+          console.warn(`[Stage3D] ID mapping not found for key: ${key}`);
+        }
     }
   };
 
@@ -856,11 +873,14 @@ const Stage3D = () => {
                 <button
                   key={part.id}
                   type="button"
-                  // [수정] 하단 메뉴 클릭 시 히스토리 기록 추가
+                  // [수정] 하단 메뉴 클릭 시에도 Key -> ID 변환 후 기록 저장
                   onClick={() => {
                     setBodyPart(part.id);
                     if (isAuthenticated) {
-                      recordBodyPartView(part.id, 'view');
+                        const numericId = bodyPartIds ? bodyPartIds[part.id] : undefined;
+                        if (numericId) {
+                          recordBodyPartView(numericId);
+                        }
                     }
                   }}
                   aria-pressed={isActive}

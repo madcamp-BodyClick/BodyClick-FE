@@ -259,6 +259,10 @@ type BodyMapState = {
   systemCodeById: Record<number, SystemKey>;
   bodyPartLabels: Partial<Record<BodyPartKey, string>>;
   bodyPartIdByCode: Partial<Record<BodyPartKey, number>>;
+  
+  // [추가] Stage3D에서 사용하기 위한 Key-ID 매핑 (bodyPartIdByCode와 동일한 데이터)
+  bodyPartIds: Partial<Record<BodyPartKey, number>>;
+  
   bodyPartCodeById: Record<number, BodyPartKey>;
   bodyPartDetailsById: Record<number, BodyPartDetail>;
   bodyPartDiseasesById: Record<number, DiseaseSummary[]>;
@@ -281,7 +285,6 @@ type BodyMapState = {
   cameraResetNonce: number;
   setSystem: (system: SystemKey) => void;
   setBodyPart: (part: BodyPartKey | null) => void;
-  // 👇 [추가] 북마크 페이지 등 외부에서 사용할 별칭(Alias) 함수들
   setSelectedSystem: (system: SystemKey | null) => void;
   setSelectedBodyPart: (part: BodyPartKey | null) => void;
   
@@ -299,6 +302,10 @@ export const useBodyMapStore = create<BodyMapState>((set, get) => ({
   systemCodeById: {},
   bodyPartLabels: {},
   bodyPartIdByCode: {},
+  
+  // [추가] 초기값
+  bodyPartIds: {},
+  
   bodyPartCodeById: {},
   bodyPartDetailsById: {},
   bodyPartDiseasesById: {},
@@ -360,6 +367,8 @@ export const useBodyMapStore = create<BodyMapState>((set, get) => ({
     set((state) => ({
       bodyPartIdByCode: { ...state.bodyPartIdByCode, [code]: id },
       bodyPartCodeById: { ...state.bodyPartCodeById, [id]: code },
+      // [추가] bodyPartIds 동기화
+      bodyPartIds: { ...state.bodyPartIds, [code]: id },
     })),
   setBodyPartLabel: (code, label) =>
     set((state) => ({
@@ -385,6 +394,8 @@ export const useBodyMapStore = create<BodyMapState>((set, get) => ({
       bodyPartIdByCode: { ...state.bodyPartIdByCode, [code]: match.id },
       bodyPartCodeById: { ...state.bodyPartCodeById, [match.id]: code },
       bodyPartLabels: { ...state.bodyPartLabels, [code]: match.name },
+      // [추가] bodyPartIds 동기화
+      bodyPartIds: { ...state.bodyPartIds, [code]: match.id },
     }));
     return match.id;
   },
@@ -471,7 +482,6 @@ export const useBodyMapStore = create<BodyMapState>((set, get) => ({
         bodyPartSelections: nextSelections,
       };
     }),
-  // 👇 [추가] 구현: 기존 함수 재사용
   setSelectedSystem: (system) => {
     if (system) get().setSystem(system);
     else set({ selectedSystem: null });

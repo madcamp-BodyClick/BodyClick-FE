@@ -37,17 +37,18 @@ type PartOption = {
 const ExplorePage = () => {
   const router = useRouter();
   const { isAuthenticated, user, updateProfile, clearUser } = useAuthStore();
+  
+  // Store 매핑 정보
+  const bodyPartIds = useBodyMapStore((state) => state.bodyPartIds);
+
   const setSystem = useBodyMapStore((state) => state.setSystem);
   const setBodyPart = useBodyMapStore((state) => state.setBodyPart);
-  const recentBodyParts = useBodyMapStore((state) => state.recentBodyParts);
-  const bodyPartSelections = useBodyMapStore(
-    (state) => state.bodyPartSelections,
-  );
+  // recentBodyParts(로컬 스토어)는 이제 API 데이터(recentHistory)가 없을 때의 최후의 수단으로만 사용
+  const recentBodyParts = useBodyMapStore((state) => state.recentBodyParts); 
+  const bodyPartSelections = useBodyMapStore((state) => state.bodyPartSelections);
   const getSystemLabel = useBodyMapStore((state) => state.getSystemLabel);
   const getBodyPartLabel = useBodyMapStore((state) => state.getBodyPartLabel);
-  const getBodyPartCodeByLabel = useBodyMapStore(
-    (state) => state.getBodyPartCodeByLabel,
-  );
+  const getBodyPartCodeByLabel = useBodyMapStore((state) => state.getBodyPartCodeByLabel);
   const setBodyPartId = useBodyMapStore((state) => state.setBodyPartId);
   const setBodyPartLabel = useBodyMapStore((state) => state.setBodyPartLabel);
 
@@ -82,7 +83,7 @@ const ExplorePage = () => {
     });
   }, [user]);
 
-  // 외부 클릭 감지 (메뉴 닫기)
+  // 외부 클릭 감지
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node | null;
@@ -123,9 +124,12 @@ const ExplorePage = () => {
     return () => window.cancelAnimationFrame(raf);
   }, [isSearchOpen]);
 
-  // 검색 홈 데이터 로드 (인기순/최신순)
+  // [수정] 검색창이 열릴 때마다 데이터 최신화 (최신순 반영 핵심)
   useEffect(() => {
     const loadSearchHome = async () => {
+      // 검색창이 닫혀있으면 굳이 불러오지 않음 (최적화)
+      if (!isSearchOpen) return;
+
       const response = await fetchSearchHome();
       if (response.ok && response.data?.success) {
         setPopularParts(response.data.data.popular_body_parts);
@@ -136,9 +140,9 @@ const ExplorePage = () => {
       }
     };
     loadSearchHome();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isSearchOpen]); // isSearchOpen이 true가 될 때 실행됨
 
-  // 데이터 동기화: Store에 ID/Label 매핑 등록
+  // 데이터 동기화
   useEffect(() => {
     popularParts.forEach((item) => {
       const code = getBodyPartCodeByLabel(item.name);
@@ -173,7 +177,7 @@ const ExplorePage = () => {
     [getBodyPartLabel, getSystemLabel],
   );
 
-  // 검색 API 호출 (Debounce 적용)
+  // 검색 API 호출
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
@@ -225,8 +229,7 @@ const ExplorePage = () => {
     setBodyPartLabel,
   ]);
 
-  // [수정] 전체 파츠 리스트 (중복 ID 제거 보장)
-  // 원천 데이터(BODY_PARTS)에 중복이 있어도 여기서 걸러내므로 'duplicate key' 오류 방지
+  // 전체 파츠 리스트 (중복 제거)
   const allParts = useMemo(() => {
     const rawParts = Object.values(BODY_PARTS)
       .flat()
@@ -242,7 +245,6 @@ const ExplorePage = () => {
       })
       .filter((item): item is PartOption => item !== null);
 
-    // Map을 이용한 고유성 보장 (ID 기준)
     const uniquePartsMap = new Map<string, PartOption>();
     rawParts.forEach((part) => {
       if (!uniquePartsMap.has(part.id)) {
@@ -253,7 +255,7 @@ const ExplorePage = () => {
     return Array.from(uniquePartsMap.values());
   }, [getBodyPartLabel, getSystemLabel]);
 
-  // [최적화] 랭킹 Map 미리 계산
+  // 랭킹 Map
   const popularRankMap = useMemo(() => {
     const map = new Map<string, number>();
     popularParts.forEach((item) => {
@@ -265,12 +267,15 @@ const ExplorePage = () => {
 
   const recentRankMap = useMemo(() => {
     const map = new Map<string, number>();
+    
+    // [중요] API 데이터(recentHistory)가 있으면 그걸 최우선으로 사용
     if (recentHistory.length > 0) {
       recentHistory.forEach((item, index) => {
         const code = getBodyPartCodeByLabel(item.keyword);
-        if (code) map.set(code, index);
+        if (code) map.set(code, index); // index가 낮을수록 최신
       });
     } else {
+      // API 데이터가 없을 때만 로컬 스토어 데이터 사용 (Fallback)
       recentBodyParts.forEach((partId, index) => {
         map.set(partId, index);
       });
@@ -278,34 +283,31 @@ const ExplorePage = () => {
     return map;
   }, [recentHistory, recentBodyParts, getBodyPartCodeByLabel]);
 
-  // [수정] 필터링 및 정렬 로직 (개수 제한 5개 + 엄격한 모드 분리)
+  // 필터링 및 정렬 로직 (메인 리스트)
   const filteredParts = useMemo(() => {
     const query = searchQuery.trim();
 
-    // 1. 검색어 입력 시: API 결과 우선
+    // 1. 검색어 입력 시
     if (query) {
       return searchResults.length > 0 ? searchResults : [];
     }
 
-    // 2. 검색어가 없을 때: 모드에 따라 데이터 소스 결정
+    // 2. 기본 상태 (추천 리스트)
     let candidates: PartOption[] = [];
 
     if (searchSort === "popular") {
-      // 인기순: 랭킹 맵에 있는 것만 포함
+      // 인기순
       candidates = allParts.filter((part) => popularRankMap.has(part.id));
-      
       candidates.sort((a, b) => {
         const aScore = popularRankMap.get(a.id) ?? 0;
         const bScore = popularRankMap.get(b.id) ?? 0;
         return bScore - aScore;
       });
     } else {
-      // 최신순: 랭킹 맵에 있는 것만 포함
-      // 기록이 아예 없으면 빈 배열 반환 (엉뚱한 부위 노출 방지)
-      if (recentRankMap.size === 0) return [];
+      // 최신순
+      if (recentRankMap.size === 0) return []; // 기록 없으면 빈 리스트
 
       candidates = allParts.filter((part) => recentRankMap.has(part.id));
-      
       candidates.sort((a, b) => {
         const aIndex = recentRankMap.get(a.id) ?? Number.POSITIVE_INFINITY;
         const bIndex = recentRankMap.get(b.id) ?? Number.POSITIVE_INFINITY;
@@ -313,7 +315,6 @@ const ExplorePage = () => {
       });
     }
 
-    // 최종적으로 5개만 자르기
     return candidates.slice(0, 5);
   }, [
     allParts,
@@ -324,69 +325,25 @@ const ExplorePage = () => {
     searchSort,
   ]);
 
-  // [수정] 추천 검색어 칩 (Fallback 제거 및 중복 방지)
-  const recommendedParts = useMemo(() => {
-    const deduplicate = (items: PartOption[]) => {
-      const seen = new Set<string>();
-      return items.filter((item) => {
-        if (seen.has(item.id)) return false;
-        seen.add(item.id);
-        return true;
-      });
-    };
-    
-    const popularOptions = popularParts
-      .map((item) => {
-        const code = getBodyPartCodeByLabel(item.name);
-        if (!code) return null;
-        return buildPartOption(code);
-      })
-      .filter((item): item is PartOption => item !== null);
-
-    const recentOptions =
-      recentHistory.length > 0
-        ? recentHistory
-            .map((item) => {
-              const code = getBodyPartCodeByLabel(item.keyword);
-              if (!code) return null;
-              return buildPartOption(code);
-            })
-            .filter((item): item is PartOption => item !== null)
-        : recentBodyParts
-            .map((partId) => buildPartOption(partId))
-            .filter((item): item is PartOption => item !== null);
-
-    if (searchSort === "popular") {
-      // 데이터가 없으면 빈 배열 반환 (allParts로 넘어가지 않음)
-      return popularOptions.length > 0 ? deduplicate(popularOptions).slice(0, 8) : [];
-    }
-    
-    if (searchSort === "recent") {
-       // 데이터가 없으면 빈 배열 반환
-      return recentOptions.length > 0 ? deduplicate(recentOptions).slice(0, 8) : [];
-    }
-    
-    // 기본적으로는 아무것도 보여주지 않거나, 필요하다면 빈 배열 반환
-    return [];
-  }, [
-    buildPartOption, // allParts 의존성 제거 (fallback 사용 안함)
-    getBodyPartCodeByLabel,
-    popularParts,
-    recentBodyParts,
-    recentHistory,
-    searchSort,
-  ]);
+  // [삭제] recommendedParts (추천 검색어 칩 로직 삭제됨)
 
   const handleSelectPart = (partId: BodyPartKey) => {
     const part = BODY_PART_LOOKUP[partId];
     if (!part) return;
+    
     setSystem(part.system);
     setBodyPart(partId);
     setIsSearchOpen(false);
     setSearchQuery("");
 
+    // 기록 저장
     if (isAuthenticated) {
-      recordBodyPartView(partId, 'view'); 
+      const numericId = bodyPartIds[partId];
+      if (numericId) {
+        recordBodyPartView(numericId);
+      } else {
+        console.warn(`ID not found for part: ${partId}`);
+      }
     }
   };
 
@@ -399,7 +356,6 @@ const ExplorePage = () => {
 
     setIsSavingProfile(true);
     try {
-      // API Spec: birth_date
       const response = await updateUserProfile({
         name: profileDraft.name,
         gender: profileDraft.gender as "MALE" | "FEMALE",
@@ -407,7 +363,6 @@ const ExplorePage = () => {
       });
 
       if (response.ok && response.data?.success) {
-        // Store Spec: birthdate
         updateProfile({
           name: profileDraft.name,
           gender: profileDraft.gender as "MALE" | "FEMALE",
@@ -428,7 +383,6 @@ const ExplorePage = () => {
   return (
     <main className="min-h-screen bg-bm-bg text-bm-text">
       <div className="relative min-h-screen overflow-hidden">
-        {/* 배경 효과 */}
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-[radial-gradient(70%_70%_at_20%_20%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(50%_50%_at_80%_10%,rgba(255,255,255,0.05)_0%,transparent_60%)]" />
@@ -460,9 +414,9 @@ const ExplorePage = () => {
                         <User className="h-4 w-4" aria-hidden="true" />
                       </button>
                       
-                      {/* 프로필 메뉴 */}
                       {isProfileOpen && (
                         <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-bm-border bg-bm-panel px-4 py-3 text-xs text-bm-text shadow-lg">
+                          {/* 프로필 메뉴 내용 생략 (기존과 동일) */}
                           <div className="flex items-center justify-between">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bm-muted">
                               내 프로필
@@ -489,6 +443,7 @@ const ExplorePage = () => {
                             </div>
                           ) : (
                             <form className="mt-3 space-y-2" onSubmit={handleSaveProfile}>
+                              {/* 프로필 수정 폼 생략 (기존과 동일) */}
                               <label className="block">
                                 <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
                                   이름
@@ -583,7 +538,6 @@ const ExplorePage = () => {
                   </Link>
                 )}
                 
-                {/* 검색 버튼 */}
                 <button
                   type="button"
                   onClick={() => setIsSearchOpen((prev) => !prev)}
@@ -594,7 +548,6 @@ const ExplorePage = () => {
                   <Search className="h-4 w-4" />
                 </button>
 
-                {/* 검색 모달 */}
                 {isSearchOpen && (
                   <div className="absolute right-0 top-full z-30 mt-3 w-[min(360px,90vw)] rounded-2xl border border-bm-border bg-bm-panel p-4 text-xs text-bm-text shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                     <div className="rounded-xl border border-bm-border bg-bm-panel-soft px-3 py-2">
@@ -607,54 +560,39 @@ const ExplorePage = () => {
                       />
                     </div>
                     
-                    {/* 추천 검색어 (Chips) */}
-                    <div className="mt-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-bm-muted">
-                          추천 검색어
-                        </p>
-                        <div className="flex items-center gap-1 rounded-full border border-bm-border bg-bm-panel-soft p-0.5 text-[10px]">
-                          <button
-                            type="button"
-                            onClick={() => setSearchSort("recent")}
-                            className={`rounded-full px-2 py-1 transition ${
-                              searchSort === "recent"
-                                ? "bg-bm-accent-soft text-bm-text"
-                                : "text-bm-muted hover:text-bm-text"
-                            }`}
-                          >
-                            최신순
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSearchSort("popular")}
-                            className={`rounded-full px-2 py-1 transition ${
-                              searchSort === "popular"
-                                ? "bg-bm-accent-soft text-bm-text"
-                                : "text-bm-muted hover:text-bm-text"
-                            }`}
-                          >
-                            인기순
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {recommendedParts.map((part) => (
-                          part && (
-                            <button
-                              key={part.id}
-                              type="button"
-                              onClick={() => handleSelectPart(part.id)}
-                              className="rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text"
-                            >
-                              {part.label}
-                            </button>
-                          )
-                        ))}
+                    {/* [수정] 추천 검색어 칩 UI 삭제 및 정렬 버튼만 남김 */}
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-bm-muted">
+                        {searchSort === "recent" ? "최근 본 부위" : "인기 부위"}
+                      </p>
+                      <div className="flex items-center gap-1 rounded-full border border-bm-border bg-bm-panel-soft p-0.5 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => setSearchSort("recent")}
+                          className={`rounded-full px-2 py-1 transition ${
+                            searchSort === "recent"
+                              ? "bg-bm-accent-soft text-bm-text"
+                              : "text-bm-muted hover:text-bm-text"
+                          }`}
+                        >
+                          최신순
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSearchSort("popular")}
+                          className={`rounded-full px-2 py-1 transition ${
+                            searchSort === "popular"
+                              ? "bg-bm-accent-soft text-bm-text"
+                              : "text-bm-muted hover:text-bm-text"
+                          }`}
+                        >
+                          인기순
+                        </button>
                       </div>
                     </div>
+                    
+                    {/* (칩 영역 삭제됨) */}
 
-                    {/* 검색 결과 리스트 */}
                     <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
                       {isSearching ? (
                         <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
@@ -663,7 +601,7 @@ const ExplorePage = () => {
                         </div>
                       ) : filteredParts.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
-                          {searchQuery ? "검색 결과가 없습니다." : "데이터를 불러오는 중입니다."}
+                          {searchQuery ? "검색 결과가 없습니다." : "최근 조회한 기록이 없습니다."}
                         </div>
                       ) : (
                         filteredParts.map((part) => (
