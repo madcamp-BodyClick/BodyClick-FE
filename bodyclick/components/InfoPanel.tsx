@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Bookmark, X, AlertCircle, Activity, RefreshCw } from "lucide-react";
@@ -24,7 +24,7 @@ import {
   type InsightTab,
 } from "../store/useBodyMapStore";
 
-// 질환 상세 데이터 타입 정의
+// --- 질환 상세 데이터 타입 정의 ---
 interface DiseaseDetail {
   id: number;
   body_part_id: number;
@@ -105,6 +105,9 @@ const InfoPanel = () => {
   const [selectedDisease, setSelectedDisease] = useState<DiseaseDetail | null>(null);
   const [isLoadingDisease, setIsLoadingDisease] = useState(false);
 
+  // [Race Condition 방지용 Ref] 현재 선택된 부위를 추적
+  const currentPartRef = useRef<string | null>(null);
+
   const part = selectedBodyPart ? BODY_PART_LOOKUP[selectedBodyPart] : null;
   const agent = getAgentProfileForPart(selectedBodyPart);
   const partLabel = selectedBodyPart ? getBodyPartLabel(selectedBodyPart) : null;
@@ -141,7 +144,11 @@ const InfoPanel = () => {
     refreshHospitalBookmarks();
   }, [isAuthenticated, refreshBodyPartBookmarks, refreshHospitalBookmarks]);
 
+  // 부위 상세 정보 로딩
   useEffect(() => {
+    // 부위가 변경될 때마다 Ref 업데이트 및 상태 초기화
+    currentPartRef.current = selectedBodyPart;
+
     if (!selectedBodyPart) {
       setDetail(null);
       setDiseases([]);
@@ -149,6 +156,7 @@ const InfoPanel = () => {
       setSelectedDisease(null); 
       return;
     }
+
     let isActive = true;
     const loadDetail = async () => {
       setIsLoadingDetail(true);
@@ -165,7 +173,10 @@ const InfoPanel = () => {
     return () => { isActive = false; };
   }, [loadBodyPartDetail, loadBodyPartDiseases, selectedBodyPart]);
 
+  // [수정] 병원 검색 로직 (Race Condition 해결 버전)
   const loadPlaces = useCallback(async () => {
+    const currentPart = currentPartRef.current; // 호출 시점의 부위 저장
+    
     if (!part || !isAuthenticated) {
       setNearbyHospitals([]);
       setIsLoadingHospitals(false);
@@ -175,6 +186,10 @@ const InfoPanel = () => {
     setIsLoadingHospitals(true);
     try {
       const location = await getUserLocation();
+      
+      // 위치 가져온 후, 사용자가 이미 다른 부위를 선택했다면 중단
+      if (currentPartRef.current !== currentPart) return;
+
       const keyword = SYSTEM_KEYWORDS[part.system] ?? "병원";
       
       const response = await fetchPlaces({
@@ -183,23 +198,31 @@ const InfoPanel = () => {
         keyword,
       });
 
+      // API 응답 후 다시 확인
+      if (currentPartRef.current !== currentPart) return;
+
       if (response.ok && response.data?.success) {
         setNearbyHospitals(response.data.data);
       } else {
         setNearbyHospitals([]);
       }
     } catch (error) {
+      if (currentPartRef.current !== currentPart) return;
       console.error("Failed to load hospitals:", error);
       setNearbyHospitals([]);
     } finally {
-      setIsLoadingHospitals(false);
+      if (currentPartRef.current === currentPart) {
+        setIsLoadingHospitals(false);
+      }
     }
   }, [isAuthenticated, part]);
 
+  // 부위가 변경되면 병원 리스트 자동 로딩
   useEffect(() => {
     loadPlaces();
   }, [loadPlaces]);
 
+  // 위치 새로고침 핸들러
   const handleRefreshLocation = async () => {
     await loadPlaces();
   };
@@ -230,13 +253,13 @@ const InfoPanel = () => {
     setActiveTab(tabId);
   };
 
+  // 질환 클릭 핸들러 (API 호출)
   const handleDiseaseClick = async (diseaseId: number) => {
-    // 이미 선택된 걸 누르면 해제할지, 유지할지 결정 (여기선 유지)
     if (selectedDisease?.id === diseaseId) return;
 
     try {
       setIsLoadingDisease(true);
-      const response = await fetch(`/api/diseases/${diseaseId}`); // [경로 확인 완료]
+      const response = await fetch(`/api/diseases/${diseaseId}`); 
       
       if (!response.ok) {
         throw new Error("Failed to fetch");
@@ -288,7 +311,6 @@ const InfoPanel = () => {
       <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8" role="dialog" aria-modal="true">
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setIsMapOpen(false); setSelectedHospitalId(null); }} />
         <div className="relative z-10 flex h-[84vh] w-[92vw] max-w-[1100px] flex-col overflow-hidden rounded-[32px] border border-bm-border bg-bm-panel shadow-[0_25px_80px_rgba(0,0,0,0.55)] animate-[fade-up_0.25s_ease-out]">
-          {/* ...지도 모달 내용 유지... */}
           <div className="relative px-6 py-5">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
             <div className="relative flex items-start justify-between gap-4">
@@ -409,6 +431,7 @@ const InfoPanel = () => {
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bm-muted">추천 병원</p>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-bm-muted">{hospitalBookmarks.length}곳 저장됨</span>
+                      {/* [추가] 위치 새로고침 버튼 */}
                       <button 
                         onClick={handleRefreshLocation} 
                         disabled={isLoadingHospitals}
@@ -457,7 +480,7 @@ const InfoPanel = () => {
               </div>
             )}
 
-            {/* --- [변경됨] 대표 질환 탭 구조 --- */}
+            {/* --- 질환 탭 (인라인 상세 정보 적용) --- */}
             {activeTab === "conditions" && (
               <div className="flex flex-col h-full min-h-0 gap-4">
                 
@@ -474,7 +497,7 @@ const InfoPanel = () => {
                             onClick={() => handleDiseaseClick(item.id)}
                             className={`rounded-full border px-3 py-2 text-xs transition-colors ${
                               isSelected 
-                                ? "bg-bm-accent text-bm-panel border-bm-accent font-semibold" // 선택시 강조
+                                ? "bg-bm-accent text-bm-panel border-bm-accent font-semibold"
                                 : "border-bm-border text-bm-text hover:bg-bm-panel hover:border-bm-accent"
                             }`}
                           >
@@ -488,23 +511,22 @@ const InfoPanel = () => {
                   </div>
                 </div>
 
-                {/* 2. 하단: 상세 정보 영역 (남은 공간 채움) */}
+                {/* 2. 하단: 상세 정보 영역 (공간 채움) */}
                 <div className="flex-1 min-h-0 overflow-hidden rounded-2xl border border-bm-border bg-bm-panel-soft">
                   {selectedDisease ? (
-                    // 정보가 있을 때
+                    // 상세 정보가 있을 때
                     <div className="h-full overflow-y-auto p-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                       <div className="flex items-start justify-between mb-4">
-                         <div>
-                           <h3 className="text-lg font-bold text-bm-text flex items-center gap-2">
+                       
+                       {/* 제목/배지 레이아웃 (줄바꿈 최적화) */}
+                       <div className="flex justify-between items-start gap-3 mb-5">
+                         {/* 제목 영역 */}
+                         <div className="space-y-2">
+                           <h3 className="text-lg font-bold text-bm-text break-keep leading-snug">
                              {selectedDisease.name}
-                             {selectedDisease.requires_medical_attention && (
-                               <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-500">
-                                 <AlertCircle size={10} /> 방문 필요
-                               </span>
-                             )}
                            </h3>
-                           {/* 위험도 그래프 */}
-                           <div className="mt-2 flex items-center gap-2">
+                           
+                           {/* 위험도 */}
+                           <div className="flex items-center gap-2">
                               <span className="text-xs text-bm-muted">위험도</span>
                               <div className="flex gap-1">
                                 {[1, 2, 3, 4, 5].map((level) => (
@@ -522,6 +544,14 @@ const InfoPanel = () => {
                               </div>
                            </div>
                          </div>
+
+                         {/* 우측 배지 (고정 너비) */}
+                         {selectedDisease.requires_medical_attention && (
+                           <div className="shrink-0 flex flex-col items-center justify-center gap-1 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl p-2 min-w-[64px] text-center">
+                             <AlertCircle size={16} /> 
+                             <span className="text-[10px] font-bold leading-none">방문<br/>필요</span>
+                           </div>
+                         )}
                        </div>
                        
                        <div className="space-y-4">
