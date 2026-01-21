@@ -14,6 +14,61 @@ interface KakaoMapProps {
   markers: PlaceResult[];
 }
 
+const KAKAO_API_KEY = process.env.NEXT_PUBLIC_KAKAO_MAP_API_KEY;
+const KAKAO_SCRIPT_ID = "kakao-maps-sdk";
+const KAKAO_SCRIPT_SRC = KAKAO_API_KEY
+  ? `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&libraries=services,clusterer&autoload=false`
+  : "";
+
+let kakaoScriptLoadingPromise: Promise<void> | null = null;
+
+const ensureKakaoScriptLoaded = () => {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  if (window.kakao && window.kakao.maps) {
+    return Promise.resolve();
+  }
+
+  if (!KAKAO_API_KEY || !KAKAO_SCRIPT_SRC) {
+    console.error("Kakao Maps API key is not configured.");
+    return Promise.resolve();
+  }
+
+  if (kakaoScriptLoadingPromise) {
+    return kakaoScriptLoadingPromise;
+  }
+
+  kakaoScriptLoadingPromise = new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.id = KAKAO_SCRIPT_ID;
+    script.src = KAKAO_SCRIPT_SRC;
+    script.async = true;
+    script.defer = true;
+
+    const cleanup = () => {
+      script.onload = null;
+      script.onerror = null;
+    };
+
+    script.onload = () => {
+      cleanup();
+      resolve();
+    };
+
+    script.onerror = (error) => {
+      cleanup();
+      console.error("Failed to load Kakao Maps SDK", error);
+      resolve();
+    };
+
+    document.head.appendChild(script);
+  });
+
+  return kakaoScriptLoadingPromise;
+};
+
 export function KakaoMap({ center, markers }: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
@@ -23,6 +78,9 @@ export function KakaoMap({ center, markers }: KakaoMapProps) {
     // 1. 지도 초기화 함수
     const initMap = () => {
       const { kakao } = window;
+      if (!kakao || !kakao.maps) {
+        return;
+      }
       
       kakao.maps.load(() => {
         if (!mapContainer.current) return;
@@ -56,6 +114,9 @@ export function KakaoMap({ center, markers }: KakaoMapProps) {
     const updateMarkers = () => {
       if (!mapInstance.current || !window.kakao) return;
       const { kakao } = window;
+      if (!kakao || !kakao.maps) {
+        return;
+      }
 
       // 기존 마커 제거
       markersRef.current.forEach((marker) => marker.setMap(null));
@@ -79,21 +140,17 @@ export function KakaoMap({ center, markers }: KakaoMapProps) {
     };
 
     // 3. [핵심] 스크립트 로드 대기 로직 (Retry)
-    if (window.kakao && window.kakao.maps) {
-      // 이미 로드되어 있으면 바로 실행
-      initMap();
-    } else {
-      // 아직 로드 안 됐으면 0.1초마다 체크 (최대 3초)
-      const timer = setInterval(() => {
-        if (window.kakao && window.kakao.maps) {
-          clearInterval(timer);
-          initMap();
-        }
-      }, 100);
+    let cancelled = false;
 
-      // 3초 뒤에도 안 되면 포기 (메모리 누수 방지)
-      setTimeout(() => clearInterval(timer), 3000);
-    }
+    ensureKakaoScriptLoaded().then(() => {
+      if (cancelled) return;
+      if (!window.kakao) return;
+      initMap();
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [center, markers]); // center나 markers가 바뀌면 재실행
 
   // 테두리 제거하고 꽉 채우기

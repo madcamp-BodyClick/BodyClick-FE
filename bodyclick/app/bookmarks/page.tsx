@@ -81,7 +81,6 @@ export default function BookmarksPage() {
     }
   }, [isAuthenticated]);
 
-  // 👉 [핵심 수정] 3D 카메라 이동을 위한 지연 로직 적용
   const handleBodyPartClick = (item: BodyPartBookmarkItem) => {
     const partKey = item.body_part.name_en.trim().toLowerCase() as BodyPartKey;
     const partInfo = BODY_PART_LOOKUP[partKey];

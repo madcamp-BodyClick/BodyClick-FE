@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bookmark, Search, User, Loader2 } from "lucide-react"; // Loader2 아이콘 추가
+import { Bookmark, Search, User, Loader2 } from "lucide-react";
 import InfoPanel from "../../components/InfoPanel";
 import Stage3D from "../../components/Stage3D";
 import SystemLayerSelector from "../../components/SystemLayerSelector";
@@ -12,6 +12,7 @@ import {
   fetchSearchResults,
   signOutUser,
   updateUserProfile,
+  recordBodyPartView,
   type SearchHistoryItem,
   type SearchHomePopularItem,
 } from "../../lib/api";
@@ -61,9 +62,8 @@ const ExplorePage = () => {
     gender: "",
     birthdate: "",
   });
-  // [추가] 프로필 저장 로딩 상태
+  
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSort, setSearchSort] = useState<"recent" | "popular">("recent");
@@ -72,12 +72,9 @@ const ExplorePage = () => {
   const [searchResults, setSearchResults] = useState<PartOption[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // [제거] 불필요한 profileInitial 변수 제거됨
-
+  // Auth 변경 시 프로필 초안 설정
   useEffect(() => {
-    if (!user) {
-      return;
-    }
+    if (!user) return;
     setProfileDraft({
       name: user.name ?? "",
       gender: user.gender ?? "",
@@ -85,12 +82,12 @@ const ExplorePage = () => {
     });
   }, [user]);
 
+  // 외부 클릭 감지 (메뉴 닫기)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node | null;
-      if (!target) {
-        return;
-      }
+      if (!target) return;
+      
       if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
         setIsProfileOpen(false);
         setIsEditingProfile(false);
@@ -104,10 +101,9 @@ const ExplorePage = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ESC 키 처리
   useEffect(() => {
-    if (!isSearchOpen) {
-      return;
-    }
+    if (!isSearchOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsSearchOpen(false);
@@ -118,36 +114,35 @@ const ExplorePage = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSearchOpen]);
 
+  // 검색창 자동 포커스
   useEffect(() => {
-    if (!isSearchOpen) {
-      return;
-    }
+    if (!isSearchOpen) return;
     const raf = window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(raf);
   }, [isSearchOpen]);
 
+  // 검색 홈 데이터 로드 (인기순/최신순)
   useEffect(() => {
     const loadSearchHome = async () => {
       const response = await fetchSearchHome();
       if (response.ok && response.data?.success) {
         setPopularParts(response.data.data.popular_body_parts);
         setRecentHistory(response.data.data.my_recent_history ?? []);
-        return;
+      } else {
+        setPopularParts([]);
+        setRecentHistory([]);
       }
-      setPopularParts([]);
-      setRecentHistory([]);
     };
     loadSearchHome();
   }, [isAuthenticated]);
 
+  // 데이터 동기화: Store에 ID/Label 매핑 등록
   useEffect(() => {
     popularParts.forEach((item) => {
       const code = getBodyPartCodeByLabel(item.name);
-      if (!code) {
-        return;
-      }
+      if (!code) return;
       setBodyPartId(code, item.id);
       setBodyPartLabel(code, item.name);
     });
@@ -155,24 +150,19 @@ const ExplorePage = () => {
 
   useEffect(() => {
     recentHistory.forEach((item) => {
-      if (!item.body_part_id) {
-        return;
-      }
+      if (!item.body_part_id) return;
       const code = getBodyPartCodeByLabel(item.keyword);
-      if (!code) {
-        return;
-      }
+      if (!code) return;
       setBodyPartId(code, item.body_part_id);
       setBodyPartLabel(code, item.keyword);
     });
   }, [getBodyPartCodeByLabel, recentHistory, setBodyPartId, setBodyPartLabel]);
 
+  // PartOption 빌더
   const buildPartOption = useCallback(
     (code: BodyPartKey): PartOption | null => {
       const system = BODY_PART_LOOKUP[code]?.system;
-      if (!system) {
-        return null;
-      }
+      if (!system) return null;
       return {
         id: code,
         label: getBodyPartLabel(code),
@@ -183,7 +173,7 @@ const ExplorePage = () => {
     [getBodyPartLabel, getSystemLabel],
   );
 
-  // [수정] 검색 로직: Race Condition 방지 및 클린업 강화
+  // 검색 API 호출 (Debounce 적용)
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
@@ -192,14 +182,12 @@ const ExplorePage = () => {
       return;
     }
 
-    let isCancelled = false; // 클린업 플래그
-
+    let isCancelled = false;
     const handle = window.setTimeout(async () => {
       setIsSearching(true);
       try {
         const response = await fetchSearchResults(trimmed);
-        
-        if (isCancelled) return; // 컴포넌트 언마운트나 쿼리 변경 시 중단
+        if (isCancelled) return;
 
         if (!response.ok || !response.data?.success) {
           setSearchResults([]);
@@ -209,14 +197,12 @@ const ExplorePage = () => {
         const mapped = response.data.data
           .map((item) => {
             const code = getBodyPartCodeByLabel(item.name);
-            if (!code) {
-              return null;
-            }
+            if (!code) return null;
             setBodyPartId(code, item.id);
             setBodyPartLabel(code, item.name);
             return buildPartOption(code);
           })
-          .filter((item): item is PartOption => item !== null); // 타입 가드 적용
+          .filter((item): item is PartOption => item !== null);
 
         setSearchResults(mapped);
       } catch (error) {
@@ -239,14 +225,14 @@ const ExplorePage = () => {
     setBodyPartLabel,
   ]);
 
+  // [수정] 전체 파츠 리스트 (중복 ID 제거 보장)
+  // 원천 데이터(BODY_PARTS)에 중복이 있어도 여기서 걸러내므로 'duplicate key' 오류 방지
   const allParts = useMemo(() => {
-    return Object.values(BODY_PARTS)
+    const rawParts = Object.values(BODY_PARTS)
       .flat()
       .map((part) => {
         const system = BODY_PART_LOOKUP[part.id]?.system;
-        if (!system) {
-          return null;
-        }
+        if (!system) return null;
         return {
           id: part.id,
           label: getBodyPartLabel(part.id),
@@ -255,80 +241,104 @@ const ExplorePage = () => {
         };
       })
       .filter((item): item is PartOption => item !== null);
-  }, [getBodyPartLabel, getSystemLabel]);
 
-  const filteredParts = useMemo(() => {
-    const query = searchQuery.trim();
-    if (query && searchResults.length > 0) {
-      return searchResults;
-    }
-    const candidates = allParts.filter(
-      (part) =>
-        !query ||
-        part.label.includes(query) ||
-        part.id.toLowerCase().includes(query.toLowerCase()),
-    );
-
-    const popularRank = new Map<BodyPartKey, number>();
-    popularParts.forEach((item) => {
-      const code = getBodyPartCodeByLabel(item.name);
-      if (code) {
-        popularRank.set(code, item.view_count);
+    // Map을 이용한 고유성 보장 (ID 기준)
+    const uniquePartsMap = new Map<string, PartOption>();
+    rawParts.forEach((part) => {
+      if (!uniquePartsMap.has(part.id)) {
+        uniquePartsMap.set(part.id, part);
       }
     });
 
-    const recentRank = new Map<BodyPartKey, number>();
+    return Array.from(uniquePartsMap.values());
+  }, [getBodyPartLabel, getSystemLabel]);
+
+  // [최적화] 랭킹 Map 미리 계산
+  const popularRankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    popularParts.forEach((item) => {
+      const code = getBodyPartCodeByLabel(item.name);
+      if (code) map.set(code, item.view_count);
+    });
+    return map;
+  }, [popularParts, getBodyPartCodeByLabel]);
+
+  const recentRankMap = useMemo(() => {
+    const map = new Map<string, number>();
     if (recentHistory.length > 0) {
       recentHistory.forEach((item, index) => {
         const code = getBodyPartCodeByLabel(item.keyword);
-        if (code) {
-          recentRank.set(code, index);
-        }
+        if (code) map.set(code, index);
       });
     } else {
       recentBodyParts.forEach((partId, index) => {
-        recentRank.set(partId, index);
+        map.set(partId, index);
       });
     }
+    return map;
+  }, [recentHistory, recentBodyParts, getBodyPartCodeByLabel]);
+
+  // [수정] 필터링 및 정렬 로직 (개수 제한 5개 + 엄격한 모드 분리)
+  const filteredParts = useMemo(() => {
+    const query = searchQuery.trim();
+
+    // 1. 검색어 입력 시: API 결과 우선
+    if (query) {
+      return searchResults.length > 0 ? searchResults : [];
+    }
+
+    // 2. 검색어가 없을 때: 모드에 따라 데이터 소스 결정
+    let candidates: PartOption[] = [];
 
     if (searchSort === "popular") {
-      return [...candidates].sort((a, b) => {
-        const aScore = popularRank.get(a.id) ?? (bodyPartSelections[a.id] ?? 0);
-        const bScore = popularRank.get(b.id) ?? (bodyPartSelections[b.id] ?? 0);
-        if (aScore === bScore) {
-          return a.label.localeCompare(b.label);
-        }
+      // 인기순: 랭킹 맵에 있는 것만 포함
+      candidates = allParts.filter((part) => popularRankMap.has(part.id));
+      
+      candidates.sort((a, b) => {
+        const aScore = popularRankMap.get(a.id) ?? 0;
+        const bScore = popularRankMap.get(b.id) ?? 0;
         return bScore - aScore;
+      });
+    } else {
+      // 최신순: 랭킹 맵에 있는 것만 포함
+      // 기록이 아예 없으면 빈 배열 반환 (엉뚱한 부위 노출 방지)
+      if (recentRankMap.size === 0) return [];
+
+      candidates = allParts.filter((part) => recentRankMap.has(part.id));
+      
+      candidates.sort((a, b) => {
+        const aIndex = recentRankMap.get(a.id) ?? Number.POSITIVE_INFINITY;
+        const bIndex = recentRankMap.get(b.id) ?? Number.POSITIVE_INFINITY;
+        return aIndex - bIndex;
       });
     }
 
-    return [...candidates].sort((a, b) => {
-      const aIndex = recentRank.get(a.id) ?? Number.POSITIVE_INFINITY;
-      const bIndex = recentRank.get(b.id) ?? Number.POSITIVE_INFINITY;
-      if (aIndex === bIndex) {
-        return a.label.localeCompare(b.label);
-      }
-      return aIndex - bIndex;
-    });
+    // 최종적으로 5개만 자르기
+    return candidates.slice(0, 5);
   }, [
     allParts,
-    bodyPartSelections,
-    getBodyPartCodeByLabel,
-    popularParts,
-    recentBodyParts,
-    recentHistory,
+    popularRankMap,
+    recentRankMap,
     searchQuery,
     searchResults,
     searchSort,
   ]);
 
+  // [수정] 추천 검색어 칩 (Fallback 제거 및 중복 방지)
   const recommendedParts = useMemo(() => {
+    const deduplicate = (items: PartOption[]) => {
+      const seen = new Set<string>();
+      return items.filter((item) => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+    };
+    
     const popularOptions = popularParts
       .map((item) => {
         const code = getBodyPartCodeByLabel(item.name);
-        if (!code) {
-          return null;
-        }
+        if (!code) return null;
         return buildPartOption(code);
       })
       .filter((item): item is PartOption => item !== null);
@@ -338,9 +348,7 @@ const ExplorePage = () => {
         ? recentHistory
             .map((item) => {
               const code = getBodyPartCodeByLabel(item.keyword);
-              if (!code) {
-                return null;
-              }
+              if (!code) return null;
               return buildPartOption(code);
             })
             .filter((item): item is PartOption => item !== null)
@@ -348,16 +356,20 @@ const ExplorePage = () => {
             .map((partId) => buildPartOption(partId))
             .filter((item): item is PartOption => item !== null);
 
-    if (searchSort === "popular" && popularOptions.length > 0) {
-      return popularOptions.slice(0, 8);
+    if (searchSort === "popular") {
+      // 데이터가 없으면 빈 배열 반환 (allParts로 넘어가지 않음)
+      return popularOptions.length > 0 ? deduplicate(popularOptions).slice(0, 8) : [];
     }
-    if (searchSort === "recent" && recentOptions.length > 0) {
-      return recentOptions.slice(0, 8);
+    
+    if (searchSort === "recent") {
+       // 데이터가 없으면 빈 배열 반환
+      return recentOptions.length > 0 ? deduplicate(recentOptions).slice(0, 8) : [];
     }
-    return allParts.slice(0, 8);
+    
+    // 기본적으로는 아무것도 보여주지 않거나, 필요하다면 빈 배열 반환
+    return [];
   }, [
-    allParts,
-    buildPartOption,
+    buildPartOption, // allParts 의존성 제거 (fallback 사용 안함)
     getBodyPartCodeByLabel,
     popularParts,
     recentBodyParts,
@@ -367,20 +379,19 @@ const ExplorePage = () => {
 
   const handleSelectPart = (partId: BodyPartKey) => {
     const part = BODY_PART_LOOKUP[partId];
-    if (!part) {
-      return;
-    }
+    if (!part) return;
     setSystem(part.system);
     setBodyPart(partId);
     setIsSearchOpen(false);
     setSearchQuery("");
+
+    if (isAuthenticated) {
+      recordBodyPartView(partId, 'view'); 
+    }
   };
 
-  // [추가] 프로필 저장 핸들러
   const handleSaveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
-
-    // 유효성 검사 (성별 필수)
     if (!profileDraft.gender) {
       alert("성별을 선택해주세요.");
       return;
@@ -388,6 +399,7 @@ const ExplorePage = () => {
 
     setIsSavingProfile(true);
     try {
+      // API Spec: birth_date
       const response = await updateUserProfile({
         name: profileDraft.name,
         gender: profileDraft.gender as "MALE" | "FEMALE",
@@ -395,6 +407,7 @@ const ExplorePage = () => {
       });
 
       if (response.ok && response.data?.success) {
+        // Store Spec: birthdate
         updateProfile({
           name: profileDraft.name,
           gender: profileDraft.gender as "MALE" | "FEMALE",
@@ -415,6 +428,7 @@ const ExplorePage = () => {
   return (
     <main className="min-h-screen bg-bm-bg text-bm-text">
       <div className="relative min-h-screen overflow-hidden">
+        {/* 배경 효과 */}
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-[radial-gradient(70%_70%_at_20%_20%,rgba(99,199,219,0.12)_0%,transparent_70%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(50%_50%_at_80%_10%,rgba(255,255,255,0.05)_0%,transparent_60%)]" />
@@ -432,10 +446,7 @@ const ExplorePage = () => {
               <p className="hidden text-xs text-bm-muted lg:block">
                 의료 인사이트 인터페이스
               </p>
-              <div
-                className="relative flex items-center gap-2"
-                ref={searchPanelRef}
-              >
+              <div className="relative flex items-center gap-2" ref={searchPanelRef}>
                 {isAuthenticated ? (
                   <div className="flex items-center gap-2">
                     <div className="relative" ref={profileMenuRef}>
@@ -448,7 +459,9 @@ const ExplorePage = () => {
                       >
                         <User className="h-4 w-4" aria-hidden="true" />
                       </button>
-                      {isProfileOpen ? (
+                      
+                      {/* 프로필 메뉴 */}
+                      {isProfileOpen && (
                         <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-bm-border bg-bm-panel px-4 py-3 text-xs text-bm-text shadow-lg">
                           <div className="flex items-center justify-between">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bm-muted">
@@ -456,9 +469,7 @@ const ExplorePage = () => {
                             </p>
                             <button
                               type="button"
-                              onClick={() =>
-                                setIsEditingProfile((prev) => !prev)
-                              }
+                              onClick={() => setIsEditingProfile((prev) => !prev)}
                               className="rounded-full border border-bm-border bg-bm-panel-soft px-2 py-0.5 text-[10px] text-bm-muted transition hover:text-bm-text"
                             >
                               {isEditingProfile ? "닫기" : "프로필 수정"}
@@ -467,28 +478,17 @@ const ExplorePage = () => {
 
                           {!isEditingProfile ? (
                             <div className="mt-2 space-y-1">
-                              <p className="text-sm font-semibold">
-                                {user?.name}
-                              </p>
+                              <p className="text-sm font-semibold">{user?.name}</p>
+                              <p className="text-[11px] text-bm-muted">{user?.email}</p>
                               <p className="text-[11px] text-bm-muted">
-                                {user?.email}
-                              </p>
-                              <p className="text-[11px] text-bm-muted">
-                                {user?.gender === "MALE"
-                                  ? "남"
-                                  : user?.gender === "FEMALE"
-                                    ? "여"
-                                    : "성별 미지정"}
+                                {user?.gender === "MALE" ? "남" : user?.gender === "FEMALE" ? "여" : "성별 미지정"}
                               </p>
                               <p className="text-[11px] text-bm-muted">
                                 {user?.birthdate || "생년월일 미지정"}
                               </p>
                             </div>
                           ) : (
-                            <form
-                              className="mt-3 space-y-2"
-                              onSubmit={handleSaveProfile}
-                            >
+                            <form className="mt-3 space-y-2" onSubmit={handleSaveProfile}>
                               <label className="block">
                                 <span className="text-[10px] uppercase tracking-[0.2em] text-bm-muted">
                                   이름
@@ -497,10 +497,7 @@ const ExplorePage = () => {
                                   type="text"
                                   value={profileDraft.name}
                                   onChange={(event) =>
-                                    setProfileDraft((prev) => ({
-                                      ...prev,
-                                      name: event.target.value,
-                                    }))
+                                    setProfileDraft((prev) => ({ ...prev, name: event.target.value }))
                                   }
                                   className="mt-1 h-8 w-full rounded-lg border border-bm-border bg-bm-panel-soft px-2 text-xs text-bm-text"
                                 />
@@ -509,10 +506,7 @@ const ExplorePage = () => {
                                 label="성별"
                                 value={profileDraft.gender}
                                 onChange={(gender) =>
-                                  setProfileDraft((prev) => ({
-                                    ...prev,
-                                    gender,
-                                  }))
+                                  setProfileDraft((prev) => ({ ...prev, gender }))
                                 }
                                 size="compact"
                                 portal={false}
@@ -521,10 +515,7 @@ const ExplorePage = () => {
                                 label="생년월일"
                                 value={profileDraft.birthdate}
                                 onChange={(birthdate) =>
-                                  setProfileDraft((prev) => ({
-                                    ...prev,
-                                    birthdate,
-                                  }))
+                                  setProfileDraft((prev) => ({ ...prev, birthdate }))
                                 }
                                 size="compact"
                                 portal={false}
@@ -535,9 +526,7 @@ const ExplorePage = () => {
                                   disabled={isSavingProfile}
                                   className="flex flex-1 items-center justify-center gap-1 rounded-full border border-bm-border bg-bm-panel-soft px-3 py-1 text-[11px] text-bm-muted transition hover:text-bm-text disabled:opacity-50"
                                 >
-                                  {isSavingProfile && (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  )}
+                                  {isSavingProfile && <Loader2 className="h-3 w-3 animate-spin" />}
                                   {isSavingProfile ? "저장 중" : "저장"}
                                 </button>
                                 <button
@@ -559,9 +548,7 @@ const ExplorePage = () => {
                             type="button"
                             onClick={async () => {
                               try {
-                                await signOutUser(
-                                  `${window.location.origin}/login`,
-                                );
+                                await signOutUser(`${window.location.origin}/login`);
                               } catch (error) {
                                 console.error("Sign out failed:", error);
                               } finally {
@@ -577,7 +564,7 @@ const ExplorePage = () => {
                             로그아웃
                           </button>
                         </div>
-                      ) : null}
+                      )}
                     </div>
                     <Link
                       href="/bookmarks"
@@ -595,6 +582,8 @@ const ExplorePage = () => {
                     로그인
                   </Link>
                 )}
+                
+                {/* 검색 버튼 */}
                 <button
                   type="button"
                   onClick={() => setIsSearchOpen((prev) => !prev)}
@@ -604,7 +593,9 @@ const ExplorePage = () => {
                 >
                   <Search className="h-4 w-4" />
                 </button>
-                {isSearchOpen ? (
+
+                {/* 검색 모달 */}
+                {isSearchOpen && (
                   <div className="absolute right-0 top-full z-30 mt-3 w-[min(360px,90vw)] rounded-2xl border border-bm-border bg-bm-panel p-4 text-xs text-bm-text shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                     <div className="rounded-xl border border-bm-border bg-bm-panel-soft px-3 py-2">
                       <input
@@ -615,6 +606,8 @@ const ExplorePage = () => {
                         className="w-full bg-transparent text-sm text-bm-text placeholder:text-bm-muted focus:outline-none"
                       />
                     </div>
+                    
+                    {/* 추천 검색어 (Chips) */}
                     <div className="mt-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-bm-muted">
@@ -646,10 +639,8 @@ const ExplorePage = () => {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {recommendedParts.map((part) => {
-                          if (!part) return null;
-
-                          return (
+                        {recommendedParts.map((part) => (
+                          part && (
                             <button
                               key={part.id}
                               type="button"
@@ -658,10 +649,12 @@ const ExplorePage = () => {
                             >
                               {part.label}
                             </button>
-                          );
-                        })}
+                          )
+                        ))}
                       </div>
                     </div>
+
+                    {/* 검색 결과 리스트 */}
                     <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
                       {isSearching ? (
                         <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
@@ -670,7 +663,7 @@ const ExplorePage = () => {
                         </div>
                       ) : filteredParts.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-bm-border bg-bm-panel-soft px-3 py-3 text-[11px] text-bm-muted">
-                          검색 결과가 없습니다.
+                          {searchQuery ? "검색 결과가 없습니다." : "데이터를 불러오는 중입니다."}
                         </div>
                       ) : (
                         filteredParts.map((part) => (
@@ -696,7 +689,7 @@ const ExplorePage = () => {
                       )}
                     </div>
                   </div>
-                ) : null}
+                )}
               </div>
             </div>
           </header>

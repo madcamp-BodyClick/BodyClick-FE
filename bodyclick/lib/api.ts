@@ -366,6 +366,33 @@ export const signOutUser = async (callbackUrl: string) => {
   });
 };
 
+export const recordBodyPartView = async (bodyPartId: string, type: 'view' | 'search' = 'view') => {
+  try {
+    const response = await fetch('/api/common/search/home', { 
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        body_part_id: bodyPartId,
+        type: type,
+        timestamp: new Date().toISOString()
+      }),
+    });
+    if (!response.ok) {
+      console.error(`History record failed: ${response.status}`);
+      return null;
+    }
+    
+    const text = await response.text();
+    return text ? JSON.parse(text) : { success: true };
+    
+  } catch (error) {
+    console.error("Failed to record history:", error);
+    return null;
+  }
+};
+
 // AI Chat Function (Updated Return Type)
 export const createAiAnswer = (
   payload: CreateAiAnswerParams,

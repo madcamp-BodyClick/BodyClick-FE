@@ -35,6 +35,9 @@ import {
   type BodyPartKey,
   useBodyMapStore,
 } from "../store/useBodyMapStore";
+// [추가] API 및 Auth Store 임포트
+import { recordBodyPartView } from "../lib/api";
+import { useAuthStore } from "../store/useAuthStore";
 
 // --- Configuration ---
 const MODEL_URL = "/models/human.glb";
@@ -548,6 +551,8 @@ const getOrganFromPoint = (
 // --- Main Stage3D Component ---
 
 const Stage3D = () => {
+  // [추가] 인증 정보 가져오기
+  const { isAuthenticated } = useAuthStore();
   const selectedSystem = useBodyMapStore((state) => state.selectedSystem);
   const selectedBodyPart = useBodyMapStore((state) => state.selectedBodyPart);
   const cameraResetNonce = useBodyMapStore((state) => state.cameraResetNonce);
@@ -690,6 +695,7 @@ const Stage3D = () => {
     }
   }, [cameraResetNonce, selectedBodyPart, moveCameraToPart]);
 
+  // [수정] 3D 모델 클릭 시 히스토리 기록 추가
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
     const model = modelRef.current;
@@ -712,6 +718,11 @@ const Stage3D = () => {
       setSystem(partSystem);
     }
     setBodyPart(hit.storeKey);
+
+    // [추가] 로그인 상태라면 조회 기록 저장
+    if (isAuthenticated) {
+      recordBodyPartView(hit.storeKey, 'view');
+    }
   };
 
   const parts = selectedSystem ? BODY_PARTS[selectedSystem] : [];
@@ -845,7 +856,13 @@ const Stage3D = () => {
                 <button
                   key={part.id}
                   type="button"
-                  onClick={() => setBodyPart(part.id)}
+                  // [수정] 하단 메뉴 클릭 시 히스토리 기록 추가
+                  onClick={() => {
+                    setBodyPart(part.id);
+                    if (isAuthenticated) {
+                      recordBodyPartView(part.id, 'view');
+                    }
+                  }}
                   aria-pressed={isActive}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                     isActive
