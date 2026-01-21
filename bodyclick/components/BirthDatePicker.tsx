@@ -147,7 +147,12 @@ const BirthDatePicker = ({
                   {displayMonth.getMonth() + 1}월
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-40 border-bm-border bg-bm-panel p-2">
+              {/* 👇 [수정] portal={false} 추가: 달력 내부 DOM에 렌더링되어 부모 닫힘 방지 */}
+              <PopoverContent 
+                align="start" 
+                portal={false} 
+                className="w-40 border-bm-border bg-bm-panel p-2 z-50"
+              >
                 <div className="grid grid-cols-3 gap-2">
                   {monthOptions.map((month) => (
                     <button
@@ -181,7 +186,12 @@ const BirthDatePicker = ({
                   {displayMonth.getFullYear()}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-36 border-bm-border bg-bm-panel p-2">
+              {/* 👇 [수정] portal={false} 추가: 달력 내부 DOM에 렌더링되어 부모 닫힘 방지 */}
+              <PopoverContent 
+                align="end" 
+                portal={false} 
+                className="w-36 border-bm-border bg-bm-panel p-2 z-50"
+              >
                 <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
                   {yearOptions.map((year) => (
                     <button
@@ -234,16 +244,9 @@ const BirthDatePicker = ({
               head_cell: "w-9 text-center text-xs text-bm-muted",
               row: "flex",
               cell: "relative w-9 text-center",
-
-              // 기본 날짜
               day: "h-8 w-8 rounded-full text-sm text-bm-text/80 transition hover:bg-bm-accent-soft hover:text-bm-text",
-
-              // 오늘 날짜: 텍스트만
               day_today: "font-semibold text-bm-text",
-
-              // 선택된 날짜만 배경
-              day_selected:
-                "bg-bm-accent text-black hover:bg-bm-accent-strong",
+              day_selected: "bg-bm-accent text-black hover:bg-bm-accent-strong",
             }}
           />
 
