@@ -40,21 +40,22 @@ import { recordBodyPartView } from "../lib/api";
 import { useAuthStore } from "../store/useAuthStore";
 
 // --- Configuration ---
-const MODEL_URL = "/models/human.glb";
+const S3_URL = process.env.NEXT_PUBLIC_S3_URL;
+const MODEL_URL = `${S3_URL}/human.glb`;
 const ORGAN_MODELS = {
-  aorta: "/models/aorta.glb",
-  brain: "/models/brain.glb",
-  bronchus: "/models/bronchus.glb",
-  heart: "/models/heart.glb",
-  shoulder: "/models/shoulder.glb",
-  stomach: "/models/stomach.glb",
-  intestine: "/models/intestine.glb",
-  knee: "/models/knee.glb",
-  liver: "/models/liver.glb",
-  lung: "/models/lung.glb",
-  pancreas: "/models/pancreas.glb",
-  spinal: "/models/spinal.glb",
-  vertebra: "/models/vertebra.glb",
+  aorta: `${S3_URL}/aorta.glb`,
+  brain: `${S3_URL}/brain.glb`,
+  bronchus: `${S3_URL}/bronchus.glb`,
+  heart: `${S3_URL}/heart.glb`,
+  shoulder: `${S3_URL}/shoulder.glb`,
+  stomach: `${S3_URL}/stomach.glb`,
+  intestine: `${S3_URL}/intestine.glb`,
+  knee: `${S3_URL}/knee.glb`,
+  liver: `${S3_URL}/liver.glb`,
+  lung: `${S3_URL}/lung.glb`,
+  pancreas: `${S3_URL}/pancreas.glb`,
+  spinal: `${S3_URL}/spinal.glb`,
+  vertebra: `${S3_URL}/vertebra.glb`,
 } as const;
 
 type OrganKey = keyof typeof ORGAN_MODELS;
@@ -223,7 +224,7 @@ const HumanModel = ({
   position?: [number, number, number];
   onLoaded: () => void;
 }) => {
-  const { scene } = useGLTF(MODEL_URL);
+  const { scene } = useGLTF(MODEL_URL, true);
 
   useLayoutEffect(() => {
     if (!scene) return;
@@ -274,7 +275,7 @@ const OrganModel = ({
   startPosition: [number, number, number];
   targetPosition?: [number, number, number];
 }) => {
-  const { scene } = useGLTF(ORGAN_MODELS[organKey]);
+  const { scene } = useGLTF(ORGAN_MODELS[organKey], true);
   const clonedScene = useMemo(() => scene.clone(true), [scene]);
   const groupRef = useRef<Group>(null);
   
@@ -903,17 +904,17 @@ const Stage3D = () => {
 export default Stage3D;
 
 // Preload assets
-useGLTF.preload(MODEL_URL);
-useGLTF.preload(ORGAN_MODELS.aorta);
-useGLTF.preload(ORGAN_MODELS.brain);
-useGLTF.preload(ORGAN_MODELS.bronchus);
-useGLTF.preload(ORGAN_MODELS.heart);
-useGLTF.preload(ORGAN_MODELS.shoulder);
-useGLTF.preload(ORGAN_MODELS.stomach);
-useGLTF.preload(ORGAN_MODELS.intestine);
-useGLTF.preload(ORGAN_MODELS.knee);
-useGLTF.preload(ORGAN_MODELS.liver);
-useGLTF.preload(ORGAN_MODELS.lung);
-useGLTF.preload(ORGAN_MODELS.pancreas);
-useGLTF.preload(ORGAN_MODELS.spinal);
-useGLTF.preload(ORGAN_MODELS.vertebra);
+useGLTF.preload(MODEL_URL, true);
+useGLTF.preload(ORGAN_MODELS.aorta, true);
+useGLTF.preload(ORGAN_MODELS.brain, true);
+useGLTF.preload(ORGAN_MODELS.bronchus, true);
+useGLTF.preload(ORGAN_MODELS.heart, true);
+useGLTF.preload(ORGAN_MODELS.shoulder, true);
+useGLTF.preload(ORGAN_MODELS.stomach, true);
+useGLTF.preload(ORGAN_MODELS.intestine, true);
+useGLTF.preload(ORGAN_MODELS.knee, true);
+useGLTF.preload(ORGAN_MODELS.liver, true);
+useGLTF.preload(ORGAN_MODELS.lung, true);
+useGLTF.preload(ORGAN_MODELS.pancreas, true);
+useGLTF.preload(ORGAN_MODELS.spinal, true);
+useGLTF.preload(ORGAN_MODELS.vertebra, true);

@@ -15,9 +15,10 @@ import { Group } from "three";
 import { useRouter } from "next/navigation";
 
 // --- Configuration ---
+const S3_URL = process.env.NEXT_PUBLIC_S3_URL;
 const MODELS = {
-  human: "/models/human.glb",
-  heart: "/models/heart.glb",
+  human: `${S3_URL}/human.glb`,
+  heart: `${S3_URL}/heart.glb`,
 };
 
 const THEME = {
@@ -33,8 +34,8 @@ function HumanBody({
   onHeartClick: () => void; 
   active: boolean; 
 }) {
-  const { nodes: humanNodes } = useGLTF(MODELS.human) as any;
-  const { scene: heartScene } = useGLTF(MODELS.heart);
+  const { nodes: humanNodes } = useGLTF(MODELS.human, true) as any;
+  const { scene: heartScene } = useGLTF(MODELS.heart, true);
   const heartRef = useRef<Group>(null);
   
   // Heartbeat Animation Logic
@@ -233,5 +234,5 @@ export default function LandingExperience() {
   );
 }
 
-useGLTF.preload(MODELS.human);
-useGLTF.preload(MODELS.heart);
+useGLTF.preload(MODELS.human, true);
+useGLTF.preload(MODELS.heart, true);
